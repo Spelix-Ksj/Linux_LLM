@@ -204,3 +204,27 @@
 - 1차 리뷰: NEEDS_IMPROVEMENT (JOIN 예시 모호)
 - 수정 후 배포: Rule 8 JOIN 예시를 명시적 ON 조건으로 수정
 - 서비스 재시작 완료 (active/running)
+
+---
+
+## [2026-02-20] Git 이력 관리 시스템 구축
+
+### 결정사항
+- Git 로컬 저장소 초기화 + GitHub 프라이빗 저장소 생성
+- 모든 비밀번호를 환경변수로 교체 (보안 강화)
+
+### 생성된 파일
+1. **.gitignore** — .env, __pycache__, IDE, OS 파일 제외
+2. **app/.env.example** — 환경변수 템플릿 (비밀번호 플레이스홀더)
+3. **CHANGELOG.md** — 8개 Phase 전체 작업 이력 기록 (역순)
+4. **OPERATIONS.md** — Linux 초보자용 서버 운영 가이드 (한국어, 11개 섹션)
+
+### 보안 수정
+- 17개 파일에서 하드코딩된 비밀번호 제거 (SSH: spelix12#$, Oracle: hrai_con01)
+- 모두 os.environ.get("SSH_PASSWORD", "") 또는 (환경변수 참조) 로 교체
+- Git 히스토리 완전 초기화 후 클린 커밋으로 재생성
+- GitHub 저장소: https://github.com/Spelix-Ksj/Linux_LLM (PRIVATE)
+
+### 권장 사항 (사용자 조치 필요)
+- SSH 루트 비밀번호 변경 (서버 192.168.10.40)
+- Oracle DB 비밀번호 변경 (HRAI_CON 계정)
