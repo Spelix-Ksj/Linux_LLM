@@ -18,12 +18,97 @@ from model_registry import get_display_choices, get_available_models
 
 # ===== 반응형 CSS =====
 custom_css = """
+/* === 전체 배경 및 폰트 === */
+.gradio-container {
+    max-width: 1200px !important;
+    margin: auto !important;
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+}
+
+/* === 헤더 스타일 === */
+.main-title {
+    text-align: center !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 2.2em !important;
+    font-weight: 800 !important;
+    margin-bottom: 0 !important;
+}
+.sub-title {
+    text-align: center !important;
+    color: #6b7280 !important;
+    font-size: 1.05em !important;
+    margin-top: 4px !important;
+}
+
+/* === 카드 스타일 (섹션 구분) === */
+.model-section {
+    background: linear-gradient(to right, #f0f4ff, #faf5ff) !important;
+    border: 1px solid #e0e7ff !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    margin-bottom: 12px !important;
+}
+
+/* === 버튼 스타일 === */
+.primary-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    padding: 10px 24px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+}
+.primary-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+}
+
+/* === 상태 표시 === */
+.status-success { color: #059669 !important; font-weight: 600 !important; }
+.status-error { color: #dc2626 !important; font-weight: 600 !important; }
+
+/* === SQL 코드 블록 === */
+.sql-output {
+    border-radius: 10px !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+/* === 데이터프레임 === */
+.result-table {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+/* === 탭 스타일 === */
+.tabs > .tab-nav > button {
+    font-weight: 600 !important;
+    font-size: 1.05em !important;
+    padding: 10px 20px !important;
+}
+.tabs > .tab-nav > button.selected {
+    border-bottom: 3px solid #667eea !important;
+    color: #667eea !important;
+}
+
+/* === 아코디언 (보고서) === */
+.report-accordion {
+    border: 1px solid #e0e7ff !important;
+    border-radius: 10px !important;
+    margin-top: 12px !important;
+}
+
+/* === 반응형 === */
 @media (max-width: 768px) {
     .gradio-container { padding: 4px !important; }
     #model-row, #query-row { flex-direction: column !important; }
+    .main-title { font-size: 1.6em !important; }
 }
-.status-success { color: #16a34a; font-weight: bold; }
-.status-error { color: #dc2626; font-weight: bold; }
 """
 
 
@@ -184,11 +269,17 @@ def process_question(question: str, model_key: str, progress=gr.Progress()):
 
 # ===== Gradio UI 구성 =====
 with gr.Blocks(title="HR Text2SQL 시스템") as demo:
-    gr.Markdown("# 인사정보 Text2SQL 시스템")
-    gr.Markdown("자연어로 질문하면 Oracle HR DB에서 결과를 조회합니다.")
+    gr.Markdown(
+        "# 인사정보 Text2SQL 시스템",
+        elem_classes=["main-title"],
+    )
+    gr.Markdown(
+        "자연어로 질문하면 Oracle HR DB에서 결과를 조회합니다",
+        elem_classes=["sub-title"],
+    )
 
     # 모델 선택 영역 (탭 밖 — 항상 표시)
-    with gr.Row(elem_id="model-row"):
+    with gr.Row(elem_id="model-row", elem_classes=["model-section"]):
         model_dropdown = gr.Dropdown(
             label="모델 선택",
             choices=get_display_choices(),
@@ -215,13 +306,14 @@ with gr.Blocks(title="HR Text2SQL 시스템") as demo:
                     variant="primary",
                     scale=1,
                     min_width=120,
+                    elem_classes=["primary-btn"],
                 )
 
             status_output = gr.Textbox(label="상태", interactive=False)
 
             with gr.Row():
                 with gr.Column(scale=1):
-                    sql_output = gr.Code(label="생성된 SQL", language="sql")
+                    sql_output = gr.Code(label="생성된 SQL", language="sql", elem_classes=["sql-output"])
                     download_btn = gr.Button("CSV 다운로드", size="sm", variant="secondary")
                     download_file = gr.File(label="다운로드", visible=False)
 
@@ -229,9 +321,10 @@ with gr.Blocks(title="HR Text2SQL 시스템") as demo:
                 label="조회 결과",
                 wrap=True,
                 max_height=500,
+                elem_classes=["result-table"],
             )
 
-            with gr.Accordion("결과 보고서", open=True):
+            with gr.Accordion("결과 보고서", open=True, elem_classes=["report-accordion"]):
                 report_output = gr.Markdown(value="")
 
             # 예시 질문
