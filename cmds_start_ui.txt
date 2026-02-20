@@ -1,0 +1,7 @@
+cp /root/text2sql/services/text2sql-ui.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable text2sql-ui
+systemctl restart text2sql-ui
+sleep 3
+systemctl status text2sql-ui 2>&1 | head -20
+curl -s -o /dev/null -w "%{http_code}" http://localhost:7860 2>&1

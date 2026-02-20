@@ -1,0 +1,15 @@
+[Unit]
+Description=Text2SQL Gradio Web UI
+After=network.target vllm.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/text2sql
+Environment="PATH=/root/miniconda3/envs/text2sql/bin:/usr/local/bin:/usr/bin"
+ExecStart=/bin/bash -c '/root/miniconda3/envs/text2sql/bin/python app.py'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

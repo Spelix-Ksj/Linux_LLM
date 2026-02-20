@@ -1,0 +1,1 @@
+cd /root/text2sql && /root/miniconda3/envs/text2sql/bin/python text2sql_pipeline.py 2>&1

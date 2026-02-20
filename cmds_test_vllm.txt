@@ -1,0 +1,2 @@
+curl -s http://localhost:8000/v1/models | python3 -m json.tool 2>&1
+curl -s http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "/install_file_backup/tessinu/gpt-oss-120b", "messages": [{"role": "user", "content": "SELECT 1 FROM dual 을 설명해줘. 한 문장으로."}], "max_tokens": 100, "temperature": 0}' 2>&1 | python3 -m json.tool

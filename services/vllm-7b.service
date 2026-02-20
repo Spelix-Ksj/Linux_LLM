@@ -1,0 +1,20 @@
+[Unit]
+Description=vLLM Text2SQL Server (7B - 테스트용)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+Environment="PATH=/root/miniconda3/envs/text2sql/bin:/usr/local/bin:/usr/bin"
+Environment="HF_HOME=/root/.cache/huggingface"
+ExecStart=/root/miniconda3/envs/text2sql/bin/python -m vllm.entrypoints.openai.api_server \
+    --model defog/sqlcoder-7b-2 \
+    --host 0.0.0.0 \
+    --port 8000
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

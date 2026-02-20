@@ -1,0 +1,3 @@
+/root/miniconda3/envs/text2sql/bin/pip install oracledb sqlalchemy pandas 2>&1 | tail -5
+/root/miniconda3/envs/text2sql/bin/pip install langchain langchain-openai langchain-community langchain-experimental 2>&1 | tail -10
+/root/miniconda3/envs/text2sql/bin/pip install gradio 2>&1 | tail -5

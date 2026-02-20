@@ -1,0 +1,1 @@
+curl -s http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d '{"model": "/install_file_backup/tessinu/gpt-oss-120b", "messages": [{"role": "user", "content": "Write a simple Oracle SQL query to count all rows in a table called move_item_master. Return ONLY the SQL, nothing else."}], "max_tokens": 500, "temperature": 0}' 2>&1 | python3 -m json.tool

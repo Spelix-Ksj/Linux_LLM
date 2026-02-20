@@ -1,0 +1,4 @@
+ls -la /root/miniconda3/envs/text2sql/bin/python
+file /etc/systemd/system/text2sql-ui.service
+cat -A /etc/systemd/system/text2sql-ui.service | head -20
+journalctl -u text2sql-ui -n 20 --no-pager 2>&1

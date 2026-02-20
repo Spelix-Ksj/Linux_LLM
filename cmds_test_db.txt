@@ -1,0 +1,3 @@
+nslookup HQ.SPELIX.CO.KR 2>&1 | head -10
+nc -zv HQ.SPELIX.CO.KR 7744 2>&1
+cd /root/text2sql && /root/miniconda3/envs/text2sql/bin/python db_setup.py 2>&1

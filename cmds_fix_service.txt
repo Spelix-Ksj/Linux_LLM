@@ -1,0 +1,25 @@
+cat > /etc/systemd/system/text2sql-ui.service << 'SVCEOF'
+[Unit]
+Description=Text2SQL Gradio Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/text2sql
+Environment="PATH=/root/miniconda3/envs/text2sql/bin:/usr/local/bin:/usr/bin"
+ExecStart=/bin/bash -c '/root/miniconda3/envs/text2sql/bin/python app.py'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+systemctl daemon-reload
+systemctl stop text2sql-ui 2>&1 || true
+systemctl reset-failed text2sql-ui 2>&1 || true
+systemctl start text2sql-ui
+sleep 8
+systemctl status text2sql-ui 2>&1 | head -15
+journalctl -u text2sql-ui -n 10 --no-pager 2>&1
+curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:7860 2>&1
