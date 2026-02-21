@@ -22,134 +22,42 @@ custom_head = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@4
 
 # ===== Hero Header HTML =====
 def _build_hero_header():
-    """Build the gradient hero header with live badge, clock, KPI badges, and title."""
+    """Build a compact single-line gradient hero header."""
     n_models = len([k for k, v in MODEL_REGISTRY.items() if v.get("enabled")])
     n_tables = len(TARGET_TABLES)
+    now = datetime.datetime.now()
     return f"""
-    <div style="
-        position: relative;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-        border-radius: 20px;
-        padding: 40px 48px 36px 48px;
-        box-shadow: 0 20px 60px rgba(102, 126, 234, 0.35);
-        overflow: hidden;
-        margin-bottom: 24px;
-        animation: fadeInUp 0.6s ease-out;
-    ">
-        <!-- Decorative circles -->
-        <div style="
-            position: absolute; top: -40px; right: -40px;
-            width: 200px; height: 200px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 50%;
-        "></div>
-        <div style="
-            position: absolute; bottom: -60px; left: 60px;
-            width: 160px; height: 160px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 50%;
-        "></div>
-        <div style="
-            position: absolute; top: 30px; left: 40%;
-            width: 80px; height: 80px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 50%;
-        "></div>
-        <div style="
-            position: absolute; bottom: 10px; right: 25%;
-            width: 120px; height: 120px;
-            background: rgba(255,255,255,0.04);
-            border-radius: 50%;
-        "></div>
-
-        <!-- Top bar: live badge + clock on left, KPI badges on right -->
-        <div style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            position: relative;
-            z-index: 1;
-        ">
-            <!-- Left: Live badge + Clock -->
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <div style="
-                    display: flex; align-items: center; gap: 8px;
-                    background: rgba(255,255,255,0.15);
-                    backdrop-filter: blur(10px);
-                    -webkit-backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255,255,255,0.2);
-                    border-radius: 50px;
-                    padding: 6px 16px;
-                    font-size: 13px;
-                    color: white;
-                    font-weight: 600;
-                ">
-                    <span style="
-                        display: inline-block;
-                        width: 8px; height: 8px;
-                        background: #4ade80;
-                        border-radius: 50%;
-                        animation: pulse-dot 2s infinite;
-                        box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-                    "></span>
-                    Live
-                </div>
-                <span id="hero-clock" style="
-                    color: rgba(255,255,255,0.85);
-                    font-size: 13px;
-                    font-weight: 500;
-                    letter-spacing: 0.3px;
-                "></span>
-            </div>
-
-            <!-- Right: KPI badges -->
-            <div style="display: flex; gap: 12px;">
-                <div style="
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    width: 64px; height: 64px;
-                    background: rgba(255,255,255,0.15);
-                    backdrop-filter: blur(10px);
-                    -webkit-backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255,255,255,0.2);
-                    border-radius: 50%;
-                ">
-                    <span style="color: white; font-weight: 800; font-size: 18px; line-height: 1;">{n_models}</span>
-                    <span style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 500;">Models</span>
-                </div>
-                <div style="
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    width: 64px; height: 64px;
-                    background: rgba(255,255,255,0.15);
-                    backdrop-filter: blur(10px);
-                    -webkit-backdrop-filter: blur(10px);
-                    border: 1px solid rgba(255,255,255,0.2);
-                    border-radius: 50%;
-                ">
-                    <span style="color: white; font-weight: 800; font-size: 18px; line-height: 1;">{n_tables}</span>
-                    <span style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 500;">Tables</span>
-                </div>
-            </div>
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+                border-radius: 14px; padding: 14px 28px; margin-bottom: 16px;
+                display: flex; align-items: center; justify-content: space-between;
+                box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);
+                animation: fadeInUp 0.6s ease-out;">
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span style="color:white;font-size:1.4em;font-weight:800;letter-spacing:-0.02em;">HR Text2SQL</span>
+            <span style="background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);
+                         padding:4px 12px;border-radius:12px;color:white;font-size:12px;
+                         font-weight:600;display:flex;align-items:center;gap:6px;">
+                <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
+                             display:inline-block;animation:pulse-dot 2s infinite;"></span>
+                Live
+            </span>
+            <span id="hero-clock" style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:500;">
+                {now.strftime("%Y년 %m월 %d일")}
+            </span>
         </div>
-
-        <!-- Title -->
-        <div style="position: relative; z-index: 1;">
-            <h1 style="
-                color: white;
-                font-size: 2.8em;
-                font-weight: 800;
-                margin: 0 0 8px 0;
-                letter-spacing: -0.5px;
-                text-shadow: 0 2px 10px rgba(0,0,0,0.15);
-                line-height: 1.1;
-            ">HR Text2SQL</h1>
-            <p style="
-                color: rgba(255,255,255,0.8);
-                font-size: 1.1em;
-                margin: 0;
-                font-weight: 500;
-                letter-spacing: 0.2px;
-            ">자연어로 Oracle HR 데이터베이스에 질의합니다</p>
+        <div style="display:flex;gap:20px;align-items:center;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
+                             display:flex;align-items:center;justify-content:center;color:white;
+                             font-size:13px;font-weight:700;">{n_models}</span>
+                <span style="color:rgba(255,255,255,0.7);font-size:12px;">Models</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
+                             display:flex;align-items:center;justify-content:center;color:white;
+                             font-size:13px;font-weight:700;">{n_tables}</span>
+                <span style="color:rgba(255,255,255,0.7);font-size:12px;">Tables</span>
+            </div>
         </div>
     </div>
     """
@@ -157,35 +65,11 @@ def _build_hero_header():
 
 # ===== Stat Cards HTML =====
 def _build_stat_cards(total_queries=0, success_rate=0, avg_rows=0):
-    """Build the 3-column stat cards row."""
+    """Build compact single-line stat cards row."""
     cards = [
-        {
-            "label": "총 질의 수",
-            "value": total_queries,
-            "suffix": "",
-            "color": "#3b82f6",
-            "icon_bg": "rgba(59, 130, 246, 0.12)",
-            "icon": "\U0001f50d",
-            "delay": "0s",
-        },
-        {
-            "label": "성공률",
-            "value": success_rate,
-            "suffix": "%",
-            "color": "#10b981",
-            "icon_bg": "rgba(16, 185, 129, 0.12)",
-            "icon": "\u2705",
-            "delay": "0.1s",
-        },
-        {
-            "label": "평균 조회 건수",
-            "value": avg_rows,
-            "suffix": "",
-            "color": "#8b5cf6",
-            "icon_bg": "rgba(139, 92, 246, 0.12)",
-            "icon": "\U0001f4ca",
-            "delay": "0.2s",
-        },
+        {"label": "총 질의 수", "value": total_queries, "suffix": "", "color": "#3b82f6"},
+        {"label": "성공률", "value": success_rate, "suffix": "%", "color": "#10b981"},
+        {"label": "평균 조회 건수", "value": avg_rows, "suffix": "", "color": "#8b5cf6"},
     ]
 
     cards_html = ""
@@ -193,47 +77,17 @@ def _build_stat_cards(total_queries=0, success_rate=0, avg_rows=0):
         suffix_attr = f' data-suffix="{card["suffix"]}"' if card["suffix"] else ""
         display_val = f'{card["value"]}{card["suffix"]}'
         cards_html += f"""
-        <div style="
-            flex: 1;
-            background: white;
-            border-radius: 16px;
-            padding: 24px 28px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-            border-bottom: 4px solid {card['color']};
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: default;
-            animation: fadeInUp 0.5s ease-out {card['delay']} both;
-        "
-        onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,0.12)';"
-        onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 12px rgba(0,0,0,0.06)';"
-        >
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <div style="color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-                        {card['label']}
-                    </div>
-                    <div style="font-size: 2em; font-weight: 800; color: #1f2937; animation: countUp 0.6s ease-out;"
-                         data-counter="{card['value']}"{suffix_attr}>
-                        {display_val}
-                    </div>
-                </div>
-                <div style="
-                    width: 48px; height: 48px;
-                    background: {card['icon_bg']};
-                    border-radius: 12px;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 22px;
-                ">{card['icon']}</div>
-            </div>
+        <div style="flex:1;background:white;border-radius:10px;padding:12px 18px;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.04);border-left:3px solid {card['color']};
+                    display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:#6b7280;font-size:13px;">{card['label']}</span>
+            <span data-counter="{card['value']}"{suffix_attr}
+                  style="font-size:1.2em;font-weight:700;color:#111827;">{display_val}</span>
         </div>
         """
 
     return f"""
-    <div style="
-        display: flex;
-        gap: 20px;
-        margin-bottom: 24px;
-    ">
+    <div style="display:flex;gap:16px;margin-bottom:16px;animation:fadeInUp 0.4s ease-out;">
         {cards_html}
     </div>
     """
@@ -301,17 +155,6 @@ custom_css = """
     color: white !important;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.35) !important;
     border-bottom: none !important;
-}
-
-/* Model section card */
-.model-section {
-    background: white !important;
-    border: none !important;
-    border-radius: 16px !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
-    padding: 20px 24px !important;
-    margin-bottom: 20px !important;
-    animation: fadeInUp 0.5s ease-out !important;
 }
 
 /* Primary button - gradient */
@@ -727,23 +570,11 @@ with gr.Blocks(
     theme=gr.themes.Soft(),
 ) as demo:
 
-    # Hero Header
+    # Compact Hero Header (single line)
     hero_header = gr.HTML(value=_build_hero_header())
 
-    # Stat Cards
+    # Compact Stat Cards (single line)
     stat_cards = gr.HTML(value=_build_stat_cards(0, 0, 0))
-
-    # Model Selection
-    with gr.Row(elem_classes=["model-section"]):
-        model_dropdown = gr.Dropdown(
-            label="모델 선택",
-            choices=get_display_choices(),
-            value=DEFAULT_MODEL_KEY,
-            scale=4,
-        )
-        refresh_btn = gr.Button("새로고침", size="sm", scale=1)
-
-    model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY))
 
     # Hidden state for reasoning (passed between generate and execute)
     reasoning_state = gr.State("")
@@ -751,59 +582,18 @@ with gr.Blocks(
     with gr.Tabs():
         # ===== 탭 1: SQL 질의 =====
         with gr.Tab("SQL 질의"):
-            with gr.Row():
-                question_input = gr.Textbox(
-                    label="질문 입력",
-                    placeholder="예: 직급별 인원 수를 구해줘",
-                    lines=2,
-                    scale=3,
-                    min_width=300,
-                )
-                generate_btn = gr.Button(
-                    "SQL 생성",
-                    variant="primary",
-                    scale=1,
-                    min_width=120,
-                    elem_classes=["primary-btn"],
-                )
-
-            status_output = gr.Textbox(
-                label="상태",
-                interactive=False,
-                elem_classes=["status-display"],
+            # Create question_input with render=False so we can reference it in Examples
+            # before rendering it in the Row below
+            question_input = gr.Textbox(
+                label="질문 입력",
+                placeholder="예: 직급별 인원 수를 구해줘",
+                lines=1,
+                scale=3,
+                min_width=300,
+                render=False,
             )
 
-            sql_output = gr.Textbox(
-                label="생성된 SQL",
-                lines=8,
-                max_lines=20,
-                interactive=True,
-                info="SQL을 직접 수정한 후 'SQL 실행' 버튼을 클릭하세요",
-                elem_classes=["sql-area"],
-            )
-
-            with gr.Row():
-                execute_btn = gr.Button(
-                    "SQL 실행",
-                    variant="primary",
-                    min_width=120,
-                    elem_classes=["execute-btn"],
-                )
-                download_btn = gr.Button("CSV 다운로드", size="sm", variant="secondary")
-
-            download_file = gr.File(label="다운로드", visible=False, elem_classes=["download-section"])
-
-            result_output = gr.Dataframe(
-                label="조회 결과",
-                wrap=True,
-                max_height=500,
-                elem_classes=["result-table"],
-            )
-
-            with gr.Accordion("결과 보고서", open=True, elem_classes=["report-accordion"]):
-                report_output = gr.Markdown(value="")
-
-            # 예시 질문
+            # 예시 질문 (at top of tab)
             gr.Examples(
                 examples=[
                     ["직급별 인원 수를 구해줘"],
@@ -814,6 +604,66 @@ with gr.Blocks(
                 ],
                 inputs=question_input,
             )
+
+            # Model + Question + Generate in 1 row
+            with gr.Row():
+                model_dropdown = gr.Dropdown(
+                    label="모델",
+                    choices=get_display_choices(),
+                    value=DEFAULT_MODEL_KEY,
+                    scale=1,
+                )
+                refresh_btn = gr.Button("새로고침", size="sm", scale=0)
+                question_input.render()
+                generate_btn = gr.Button(
+                    "SQL 생성",
+                    variant="primary",
+                    scale=1,
+                    min_width=120,
+                    elem_classes=["primary-btn"],
+                )
+
+            model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY))
+
+            # Generated SQL
+            sql_output = gr.Textbox(
+                label="생성된 SQL",
+                lines=8,
+                max_lines=20,
+                interactive=True,
+                info="SQL을 직접 수정한 후 'SQL 실행' 버튼을 클릭하세요",
+                elem_classes=["sql-area"],
+            )
+
+            # Execute + CSV row
+            with gr.Row():
+                execute_btn = gr.Button(
+                    "SQL 실행",
+                    variant="primary",
+                    min_width=120,
+                    elem_classes=["execute-btn"],
+                )
+                download_btn = gr.Button("CSV 다운로드", size="sm", variant="secondary")
+
+            # Status (moved below execute row)
+            status_output = gr.Textbox(
+                label="상태",
+                interactive=False,
+                elem_classes=["status-display"],
+            )
+
+            download_file = gr.File(label="다운로드", visible=False, elem_classes=["download-section"])
+
+            # Results
+            result_output = gr.Dataframe(
+                label="조회 결과",
+                wrap=True,
+                max_height=500,
+                elem_classes=["result-table"],
+            )
+
+            with gr.Accordion("결과 보고서", open=True, elem_classes=["report-accordion"]):
+                report_output = gr.Markdown(value="")
 
         # ===== 탭 2: 질의 이력 =====
         with gr.Tab("질의 이력"):
