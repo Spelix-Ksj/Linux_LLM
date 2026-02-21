@@ -562,13 +562,7 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
 
 
 # ===== Gradio UI 구성 =====
-with gr.Blocks(
-    title="HR Text2SQL Dashboard",
-    css=custom_css,
-    js=custom_js,
-    head=custom_head,
-    theme=gr.themes.Soft(),
-) as demo:
+with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
 
     # Compact Hero Header (single line)
     hero_header = gr.HTML(value=_build_hero_header())
@@ -614,7 +608,7 @@ with gr.Blocks(
                     scale=3,
                 )
                 refresh_btn = gr.Button("새로고침", size="sm", scale=1)
-                model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY), scale=4)
+            model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY))
 
             # Row 2: Question input
             with gr.Row():
@@ -761,4 +755,8 @@ if __name__ == "__main__":
         share=False,
         show_error=False,
         auth=(gradio_user, gradio_password),
+        theme=gr.themes.Soft(),
+        css=custom_css,
+        js=custom_js,
+        head=custom_head,
     )
