@@ -28,36 +28,40 @@ def _build_hero_header():
     now = datetime.datetime.now()
     return f"""
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-                border-radius: 14px; padding: 14px 28px; margin-bottom: 16px;
-                display: flex; align-items: center; justify-content: space-between;
+                border-radius: 14px; padding: 14px 28px 12px 28px; margin-bottom: 16px;
                 box-shadow: 0 8px 30px rgba(102, 126, 234, 0.25);
                 animation: fadeInUp 0.6s ease-out;">
-        <div style="display:flex;align-items:center;gap:16px;">
-            <span style="color:white;font-size:1.4em;font-weight:800;letter-spacing:-0.02em;">HR Text2SQL</span>
-            <span style="background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);
-                         padding:4px 12px;border-radius:12px;color:white;font-size:12px;
-                         font-weight:600;display:flex;align-items:center;gap:6px;">
-                <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
-                             display:inline-block;animation:pulse-dot 2s infinite;"></span>
-                Live
-            </span>
-            <span id="hero-clock" style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:500;">
-                {now.strftime("%Y년 %m월 %d일")}
-            </span>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display:flex;align-items:center;gap:16px;">
+                <span style="color:white;font-size:1.4em;font-weight:800;letter-spacing:-0.02em;">HR Text2SQL</span>
+                <span style="background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);
+                             padding:4px 12px;border-radius:12px;color:white;font-size:12px;
+                             font-weight:600;display:flex;align-items:center;gap:6px;">
+                    <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
+                                 display:inline-block;animation:pulse-dot 2s infinite;"></span>
+                    Live
+                </span>
+                <span id="hero-clock" style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:500;">
+                    {now.strftime("%Y년 %m월 %d일")}
+                </span>
+            </div>
+            <div style="display:flex;gap:20px;align-items:center;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
+                                 display:flex;align-items:center;justify-content:center;color:white;
+                                 font-size:13px;font-weight:700;">{n_models}</span>
+                    <span style="color:rgba(255,255,255,0.7);font-size:12px;">Models</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
+                                 display:flex;align-items:center;justify-content:center;color:white;
+                                 font-size:13px;font-weight:700;">{n_tables}</span>
+                    <span style="color:rgba(255,255,255,0.7);font-size:12px;">Tables</span>
+                </div>
+            </div>
         </div>
-        <div style="display:flex;gap:20px;align-items:center;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
-                             display:flex;align-items:center;justify-content:center;color:white;
-                             font-size:13px;font-weight:700;">{n_models}</span>
-                <span style="color:rgba(255,255,255,0.7);font-size:12px;">Models</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="background:rgba(255,255,255,0.2);width:28px;height:28px;border-radius:50%;
-                             display:flex;align-items:center;justify-content:center;color:white;
-                             font-size:13px;font-weight:700;">{n_tables}</span>
-                <span style="color:rgba(255,255,255,0.7);font-size:12px;">Tables</span>
-            </div>
+        <div style="margin-top:6px;">
+            <span style="color:rgba(255,255,255,0.7);font-size:13px;font-weight:400;">자연어 질문을 Oracle SQL로 변환하여 인사정보 데이터베이스를 조회하는 AI 시스템</span>
         </div>
     </div>
     """
@@ -269,6 +273,186 @@ custom_css = """
 /* Download file */
 .download-section {
     margin-top: 8px !important;
+}
+
+/* === Universal Round Effects === */
+/* All Gradio block containers */
+.gradio-container .block {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+/* Dropdown */
+.gradio-container .wrap {
+    border-radius: 12px !important;
+}
+.gradio-container select,
+.gradio-container .secondary-wrap {
+    border-radius: 12px !important;
+}
+
+/* All panels and groups */
+.gradio-container .panel {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+.gradio-container .form {
+    border-radius: 16px !important;
+}
+
+/* Tab content panel */
+.gradio-container .tabitem {
+    border-radius: 16px !important;
+    background: white !important;
+    padding: 24px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04) !important;
+    margin-top: -8px !important;
+}
+
+/* Input containers */
+.gradio-container .input-container {
+    border-radius: 12px !important;
+}
+
+/* File upload/download areas */
+.gradio-container .file-preview {
+    border-radius: 12px !important;
+}
+
+/* Accordion */
+.gradio-container .accordion {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+/* Code blocks */
+.gradio-container .code-wrap {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+/* Dataframe - make the whole container rounded */
+.gradio-container .dataframe {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+.gradio-container table {
+    border-radius: 0 !important;
+}
+.gradio-container .table-wrap {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+/* Examples grid */
+.gradio-container .examples-holder {
+    border-radius: 12px !important;
+}
+.gradio-container .examples-holder .gallery-item {
+    border-radius: 10px !important;
+}
+
+/* Markdown containers */
+.gradio-container .markdown-text {
+    border-radius: 12px !important;
+}
+
+/* === Unified Button Heights === */
+.gradio-container button {
+    min-height: 42px !important;
+    height: 42px !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Exception: tab nav buttons should keep their own height */
+.tabs > .tab-nav > button {
+    height: auto !important;
+    min-height: auto !important;
+}
+
+/* Exception: example buttons should be smaller */
+.gradio-container .examples-holder button {
+    height: 36px !important;
+    min-height: 36px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+}
+
+/* === 2025 Design Trends === */
+/* Soft elevation for all interactive elements */
+.gradio-container .block:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
+    transition: box-shadow 0.3s ease !important;
+}
+
+/* Frosted glass effect on dropdowns */
+.gradio-container .dropdown-container {
+    background: rgba(255,255,255,0.8) !important;
+    backdrop-filter: blur(8px) !important;
+    border-radius: 12px !important;
+}
+
+/* Subtle gradient backgrounds on section containers */
+.gradio-container .gr-group {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(0,0,0,0.04) !important;
+}
+
+/* Modern scrollbar */
+.gradio-container ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.gradio-container ::-webkit-scrollbar-track {
+    background: transparent;
+}
+.gradio-container ::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+.gradio-container ::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Hover effect for example buttons */
+.gradio-container .examples-holder button:hover {
+    background: linear-gradient(135deg, #667eea15, #764ba215) !important;
+    border-color: #667eea !important;
+    color: #667eea !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Secondary button style */
+.gradio-container button.secondary {
+    background: white !important;
+    border: 1.5px solid #e5e7eb !important;
+    color: #374151 !important;
+    border-radius: 12px !important;
+}
+.gradio-container button.secondary:hover {
+    border-color: #667eea !important;
+    color: #667eea !important;
+    background: #f8fafc !important;
+}
+
+/* Stop button (이력 삭제) */
+.gradio-container button.stop {
+    background: white !important;
+    border: 1.5px solid #fca5a5 !important;
+    color: #dc2626 !important;
+    border-radius: 12px !important;
+}
+.gradio-container button.stop:hover {
+    background: #fef2f2 !important;
+    border-color: #dc2626 !important;
 }
 """
 
@@ -679,6 +863,14 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
         # ===== 탭 3: 스키마 정보 =====
         with gr.Tab("스키마 정보", elem_classes=["schema-tab"]):
             gr.Markdown(schema_info_markdown)
+
+    # Footer
+    gr.HTML("""
+    <div style="text-align:center;padding:20px 0 8px 0;color:#9ca3af;font-size:12px;border-top:1px solid #e5e7eb;margin-top:24px;">
+        <div>HR Text2SQL v2.0 — Oracle HR 인사정보 자연어 질의 시스템</div>
+        <div style="margin-top:4px;">Powered by vLLM + LangChain + Gradio | GPU: NVIDIA H100 x5</div>
+    </div>
+    """)
 
     # ===== 이벤트 핸들러 =====
 
