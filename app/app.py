@@ -210,15 +210,6 @@ custom_css = """
     box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1) !important;
 }
 
-/* Dataframe table */
-.result-table {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
-    border: none !important;
-    animation: fadeInUp 0.5s ease-out !important;
-}
-
 /* Report accordion */
 .report-accordion {
     border: none !important;
@@ -279,9 +270,7 @@ custom_css = """
 /* All Gradio block containers */
 .gradio-container .block {
     border-radius: 16px !important;
-    overflow: hidden !important;
 }
-
 /* Dropdown */
 .gradio-container .wrap {
     border-radius: 12px !important;
@@ -294,7 +283,6 @@ custom_css = """
 /* All panels and groups */
 .gradio-container .panel {
     border-radius: 16px !important;
-    overflow: hidden !important;
 }
 .gradio-container .form {
     border-radius: 16px !important;
@@ -329,20 +317,6 @@ custom_css = """
 .gradio-container .code-wrap {
     border-radius: 12px !important;
     overflow: hidden !important;
-}
-
-/* Dataframe - make the whole container rounded */
-.gradio-container .dataframe {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-}
-.gradio-container table {
-    border-radius: 0 !important;
-}
-.gradio-container .table-wrap {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    border: 1px solid #e5e7eb !important;
 }
 
 /* Examples grid */
@@ -512,56 +486,163 @@ function() {
     if (statArea) {
         counterObserver.observe(statArea, { childList: true, subtree: true });
     }
+
+    // ---- Column Resize ----
+    document.addEventListener('mousedown', function(e) {
+        if (!e.target.classList.contains('col-resize-handle')) return;
+        var th = e.target.parentElement;
+        var startX = e.pageX;
+        var startWidth = th.offsetWidth;
+        var table = th.closest('table');
+        if (table) table.style.tableLayout = 'fixed';
+
+        function onMouseMove(ev) {
+            var newWidth = startWidth + (ev.pageX - startX);
+            if (newWidth > 40) {
+                th.style.width = newWidth + 'px';
+            }
+        }
+        function onMouseUp() {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        e.preventDefault();
+    });
+
+    document.addEventListener('mouseover', function(e) {
+        if (e.target.classList.contains('col-resize-handle')) {
+            e.target.style.background = '#667eea';
+            e.target.style.opacity = '0.5';
+        }
+    });
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.classList.contains('col-resize-handle')) {
+            e.target.style.background = 'transparent';
+            e.target.style.opacity = '1';
+        }
+    });
 }
 """
 
 
 # ===== 스키마 정보 마크다운 =====
 schema_info_markdown = """
-## 사용 가능한 테이블
+## 데이터베이스 스키마 정보
 
-### 1. move_item_master (직원 마스터)
+### 테이블 요약
+| 테이블 | 건수 | 설명 |
+|--------|------|------|
+| MOVE_ITEM_MASTER | 31,025 | 직원 마스터 (인사정보) |
+| MOVE_CASE_ITEM | 148,029 | 배치안 상세 (케이스별 직원 배정) |
+| MOVE_CASE_CNST_MASTER | 1,082,117 | 제약조건 (조직별 규칙) |
+| MOVE_ORG_MASTER | 14,713 | 조직 마스터 (부서 정보) |
+
+---
+
+### 1. MOVE_ITEM_MASTER (직원 마스터)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
+| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (YYYYMM) |
+| emp_id | 사원ID | 직원 고유번호 (PK) |
+| emp_no | 사원번호 | 사번 |
 | emp_nm | 이름 | 직원 성명 |
-| pos_grd_nm | 직급 | 직급명 |
+| lvl1_nm ~ lvl5_nm | 조직계층 | 1~5단계 조직 계층명 |
 | org_nm | 현재조직 | 소속 부서명 |
-| lvl1~5_nm | 조직계층 | 1~5단계 조직 계층명 |
-| job_type1/2 | 직종 | 직종 분류 |
-| gender_nm | 성별 | 성별 |
+| prev_org_nm | 이전조직 | 직전 소속 부서명 |
+| job_type1/2/3 | 직종 | 직종 분류 |
+| pos_grd_nm | 직급 | 직급명 (대리, 과장 등) |
+| pos_grd_year | 직급년차 | 현 직급 근속 년수 |
+| gender_nm | 성별 | 남자/여자 |
 | year_desc | 연령대 | 연령대 구분 |
+| birth_ymd | 생년월일 | 생년월일(숫자) |
 | org_work_mon | 조직근무개월 | 현 조직 근무 개월수 |
+| c_area_work_mon | 권역근무개월 | 현 권역 근무 개월수 |
 | region_type | 지역구분 | 근무 지역 |
+| self_move_yn | 자기신청이동 | 자기 신청 이동 여부 (1/0) |
+| tot_score | 종합점수 | 배치 평가 점수 |
+| married | 기혼여부 | 기혼 여부 (1/0) |
+| have_children | 자녀유무 | 자녀 유무 (1/0) |
+| labor_pos | 노조직책 | 노조 직책 |
+| addr | 주소 | 직원 주소 |
 
-### 2. move_org_master (조직 마스터)
+### 2. MOVE_CASE_ITEM (배치안 상세)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
+| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
+| case_id | 케이스ID | 배치안 번호 (PK) |
+| case_det_id | 상세ID | 배치안 상세 ID (PK) |
+| rev_id | 리비전ID | 수정 버전 (PK) |
+| emp_id | 사원ID | 직원 고유번호 (PK) |
+| new_org_id | 새조직ID | 이동 대상 조직 ID |
+| new_lvl1_nm ~ new_lvl5_nm | 새조직계층 | 이동 후 조직 계층 |
+| new_job_type1/2 | 새직종 | 이동 후 직종 |
+| must_stay_yn | 잔류필수 | 잔류 필수 여부 (1/0) |
+| must_move_yn | 이동필수 | 이동 필수 여부 (1/0) |
+| must_stay_reason | 잔류사유 | 잔류 필수 사유 |
+| must_move_reason | 이동사유 | 이동 필수 사유 |
+| fixed_yn | 확정여부 | 배치 확정 여부 (Y/N) |
+| cand_yn | 후보여부 | 이동 후보 여부 |
+
+### 3. MOVE_CASE_CNST_MASTER (제약조건)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
+| case_id | 케이스ID | 배치안 번호 (PK) |
+| org_id | 조직ID | 대상 조직 ID (PK) |
+| org_nm | 조직명 | 대상 조직명 |
+| cnst_cd | 제약코드 | 제약 조건 코드 (PK) |
+| cnst_nm | 제약조건명 | 제약 조건 이름 |
+| cnst_gbn | 제약구분 | 제약 조건 구분 (분류) |
+| apply_target | 적용대상 | 제약 조건 적용 대상 |
+| cnst_val | 제약값 | 제약 조건 수치 |
+| penalty_val | 패널티 | 위반 시 패널티 점수 |
+| use_yn | 사용여부 | 사용 여부 (Y/N) |
+| cnst_des | 설명 | 제약 조건 상세 설명 |
+
+### 4. MOVE_ORG_MASTER (조직 마스터)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
+| org_id | 조직ID | 조직 고유번호 (PK) |
+| parent_org_id | 상위조직ID | 상위 조직 ID |
+| org_cd | 조직코드 | 조직 코드 |
 | org_nm | 조직명 | 조직/부서명 |
 | org_type | 조직유형 | 조직 유형 분류 |
+| lvl1_nm ~ lvl5_nm | 조직계층 | 1~5단계 조직 계층명 |
+| full_path | 전체경로 | 조직 전체 경로 |
+| lvl | 레벨 | 조직 계층 레벨(단계) |
+| job_type1/2 | 직종 | 조직 직종 분류 |
 | tot_to | 정원 | 배정 정원 |
 | region_type | 지역구분 | 조직 소재 지역 |
-| job_type1/2 | 직종 | 조직 직종 분류 |
+| addr | 주소 | 조직 주소 |
 
-### 3. move_case_item (배치안 상세)
-| 컬럼명 | 한글명 | 설명 |
-|--------|--------|------|
-| new_lvl1~5_nm | 새조직계층 | 이동 후 조직 계층 |
-| must_stay_yn | 잔류필수 | 잔류 필수 여부 |
-| must_move_yn | 이동필수 | 이동 필수 여부 |
+---
 
-### 4. move_case_cnst_master (제약조건)
-| 컬럼명 | 한글명 | 설명 |
-|--------|--------|------|
-| cnst_nm | 제약조건명 | 제약 조건 이름 |
-| cnst_val | 제약값 | 제약 조건 값 |
-| penalty_val | 위반패널티 | 위반 시 패널티 점수 |
-
-### 테이블 관계
+### 테이블 관계 (JOIN 조건)
 ```
-move_item_master ──org_nm──> move_org_master
-move_item_master <──emp_no──> move_case_item
-move_case_item ──case_id──> move_case_cnst_master
+┌──────────────────┐     FTR_MOVE_STD_ID + EMP_ID     ┌──────────────────┐
+│ MOVE_ITEM_MASTER │◄────────────────────────────────►│  MOVE_CASE_ITEM  │
+│   (직원 마스터)    │                                   │  (배치안 상세)     │
+└──────────────────┘                                   └──────────────────┘
+                                                              │
+                           FTR_MOVE_STD_ID + CASE_ID          │ NEW_ORG_ID = ORG_ID
+                           + CASE_DET_ID + REV_ID             │
+                                                              ▼
+┌──────────────────────┐   FTR_MOVE_STD_ID + ORG_ID   ┌──────────────────┐
+│MOVE_CASE_CNST_MASTER │◄────────────────────────────►│ MOVE_ORG_MASTER  │
+│   (제약조건)          │                               │  (조직 마스터)    │
+└──────────────────────┘                               └──────────────────┘
 ```
+
+### JOIN SQL 예시
+| 조인 | SQL |
+|------|-----|
+| 직원 ↔ 배치안 | `m JOIN c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id` |
+| 배치안 ↔ 제약조건 | `c JOIN cn ON c.ftr_move_std_id = cn.ftr_move_std_id AND c.case_id = cn.case_id AND c.case_det_id = cn.case_det_id AND c.rev_id = cn.rev_id` |
+| 제약조건 ↔ 조직 | `cn JOIN o ON cn.ftr_move_std_id = o.ftr_move_std_id AND cn.org_id = o.org_id` |
+| 배치안 → 새조직 | `c JOIN o ON c.ftr_move_std_id = o.ftr_move_std_id AND c.new_org_id = o.org_id` |
 """
 
 
@@ -651,15 +732,62 @@ def _export_csv(df):
     return gr.update(value=path, visible=True)
 
 
-# ===== 모델 상태 마크다운 빌더 =====
+# ===== DataFrame → HTML 테이블 변환 =====
+def _df_to_html(df):
+    """DataFrame을 스타일된 HTML 테이블로 변환 (동적 높이)"""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">조회 결과가 없습니다.</div>'
+
+    max_display = 500  # Show scrollbar if more than this
+    total = len(df)
+
+    # Build HTML table
+    html = '<div style="border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">'
+
+    # If many rows, add scrollable container
+    if total > 30:
+        html += '<div style="max-height:500px;overflow:auto;">'
+
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+
+    # Header
+    html += '<thead style="position:sticky;top:0;z-index:1;"><tr>'
+    for col in df.columns:
+        html += f'<th style="background:#f8fafc;padding:10px 14px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #e5e7eb;white-space:nowrap;position:relative;min-width:60px;">{col}<div class="col-resize-handle" style="position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;background:transparent;z-index:2;"></div></th>'
+    html += '</tr></thead>'
+
+    # Body (limit to max_display rows)
+    html += '<tbody>'
+    display_df = df.head(max_display)
+    for i, (_, row) in enumerate(display_df.iterrows()):
+        bg = '#ffffff' if i % 2 == 0 else '#f9fafb'
+        html += f'<tr style="background:{bg};">'
+        for val in row:
+            cell_val = '' if pd.isna(val) else str(val)
+            html += f'<td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;color:#111827;white-space:nowrap;">{cell_val}</td>'
+        html += '</tr>'
+    html += '</tbody></table>'
+
+    if total > 30:
+        html += '</div>'
+
+    # Footer with count
+    if total > max_display:
+        html += f'<div style="padding:8px 14px;background:#f8fafc;color:#6b7280;font-size:12px;border-top:1px solid #e5e7eb;">전체 {total}건 중 {max_display}건 표시</div>'
+
+    html += '</div>'
+    return html
+
+
+# ===== 모델 상태 텍스트 빌더 =====
 def _build_model_status(model_key):
-    """선택된 모델의 상태 정보를 마크다운으로 반환"""
+    """선택된 모델의 상태 정보를 평문 텍스트로 반환"""
     models = get_available_models()
     for m in models:
         if m["key"] == model_key:
             status = "정상" if m["healthy"] else "응답 없음"
-            return f"**현재 모델**: {m['display_name']} | **상태**: {status} | **GPU**: {m['gpu_info']}"
-    return f"**현재 모델**: {model_key} (정보 없음)"
+            return f"{m['display_name']} | 상태: {status} | GPU: {m['gpu_info']}"
+    return f"{model_key} (정보 없음)"
 
 
 def _refresh_models():
@@ -699,12 +827,13 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
     if not sql_text or not sql_text.strip():
         total, rate, avg = _get_stat_values()
         return (
-            pd.DataFrame(),
+            _df_to_html(pd.DataFrame()),
             "실행할 SQL이 없습니다.",
             "",
             _get_history(),
             _get_history_sqls(),
             _build_stat_cards(total, rate, avg),
+            pd.DataFrame(),
         )
     if model_key not in MODEL_REGISTRY:
         model_key = DEFAULT_MODEL_KEY
@@ -717,12 +846,13 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
         _update_stats("오류", 0)
         total, rate, avg = _get_stat_values()
         return (
-            pd.DataFrame(),
+            _df_to_html(pd.DataFrame()),
             f"오류: {result['error']}",
             "",
             _get_history(),
             _get_history_sqls(),
             _build_stat_cards(total, rate, avg),
+            pd.DataFrame(),
         )
 
     df = result["result"]
@@ -736,12 +866,13 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
 
     total, rate, avg = _get_stat_values()
     return (
-        df,
+        _df_to_html(df),
         f"조회 완료: {len(df)}건",
         report,
         _get_history(),
         _get_history_sqls(),
         _build_stat_cards(total, rate, avg),
+        df,
     )
 
 
@@ -757,17 +888,21 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
     # Hidden state for reasoning (passed between generate and execute)
     reasoning_state = gr.State("")
 
+    # Hidden state for raw DataFrame (used by CSV export)
+    result_df_state = gr.State(pd.DataFrame())
+
     with gr.Tabs():
         # ===== 탭 1: SQL 질의 =====
         with gr.Tab("SQL 질의"):
             # Create question_input with render=False so we can reference it in Examples
             # before rendering it in the Row below
             question_input = gr.Textbox(
-                label="질문 입력",
-                placeholder="예: 직급별 인원 수를 구해줘",
+                show_label=False,
+                placeholder="💬 질문을 입력하세요 (예: 직급별 인원 수를 구해줘)",
                 lines=1,
-                scale=3,
+                scale=4,
                 min_width=300,
+                container=False,
                 render=False,
             )
 
@@ -776,26 +911,38 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                 examples=[
                     ["직급별 인원 수를 구해줘"],
                     ["조직별 평균 조직근무개월을 구해줘"],
-                    ["성별 인원 분포를 보여줘"],
-                    ["지역구분별 인원 수를 구해줘"],
-                    ["이동필수 대상자 목록을 보여줘"],
+                    ["조직별 제약조건 위반 패널티 합계를 구해줘"],
+                    ["이동필수 대상자의 이름, 현재조직, 새조직을 보여줘"],
+                    ["조직별 정원과 현재 인원을 비교해줘"],
+                    ["잔류필수 대상자 중 직급이 과장 이상인 사람을 조회해줘"],
+                    ["지역구분별 직급 분포를 보여줘"],
+                    ["권역근무개월이 36개월 이상인 직원의 이름과 조직을 조회해줘"],
+                    ["제약조건별 평균 패널티 점수를 구해줘"],
+                    ["배치안에서 확정된 직원의 현재조직과 새조직을 비교해줘"],
                 ],
                 inputs=question_input,
             )
 
-            # Row 1: Model selection
-            with gr.Row():
+            # Row 1: Model selection (true single line — no labels)
+            with gr.Row(equal_height=True):
                 model_dropdown = gr.Dropdown(
-                    label="모델",
+                    show_label=False,
                     choices=get_display_choices(),
                     value=DEFAULT_MODEL_KEY,
-                    scale=3,
+                    scale=2,
+                    container=False,
                 )
-                refresh_btn = gr.Button("새로고침", size="sm", scale=1)
-            model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY))
+                model_status = gr.Textbox(
+                    show_label=False,
+                    value=_build_model_status(DEFAULT_MODEL_KEY),
+                    interactive=False,
+                    scale=3,
+                    container=False,
+                )
+                refresh_btn = gr.Button("🔄", size="sm", scale=0, min_width=50)
 
-            # Row 2: Question input
-            with gr.Row():
+            # Row 2: Question input (true single line — no labels)
+            with gr.Row(equal_height=True):
                 question_input.render()
                 generate_btn = gr.Button(
                     "SQL 생성",
@@ -835,12 +982,8 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
             download_file = gr.File(label="다운로드", visible=False, elem_classes=["download-section"])
 
             # Results
-            result_output = gr.Dataframe(
-                label="조회 결과",
-                wrap=True,
-                max_height=500,
-                elem_classes=["result-table"],
-            )
+            gr.Markdown("**조회 결과**")
+            result_output = gr.HTML(value="")
 
             with gr.Accordion("결과 보고서", open=True, elem_classes=["report-accordion"]):
                 report_output = gr.Markdown(value="")
@@ -908,14 +1051,14 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
     execute_btn.click(
         fn=process_execute,
         inputs=[sql_output, question_input, model_dropdown, reasoning_state],
-        outputs=[result_output, status_output, report_output, history_output, history_sqls_state, stat_cards],
+        outputs=[result_output, status_output, report_output, history_output, history_sqls_state, stat_cards, result_df_state],
         concurrency_limit=3,
     )
 
     # CSV 다운로드
     download_btn.click(
         fn=_export_csv,
-        inputs=[result_output],
+        inputs=[result_df_state],
         outputs=[download_file],
     )
 

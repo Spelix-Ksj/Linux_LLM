@@ -305,3 +305,45 @@
 ### 배포
 - 서버 192.168.10.40: text2sql-ui active (running), PID 2828306
 - GitHub 커밋: cab1b04 (main 브랜치, +528/-125 lines)
+
+---
+
+## [2026-02-21] 미션 8: 컴팩트 레이아웃 (1줄 헤더, 1줄 통계, 통합 행)
+
+### 원본 요청
+1. 히어로 헤더 → 1줄로 축소
+2. 통계 카드 → 1줄 인라인으로 축소
+3. 모델 선택 + 질문 입력 → 1줄로 통합
+4. SQL 탭 재배치: Examples → 질문 → SQL → 상태
+
+### 변경 내용
+- 히어로 헤더: padding 40px→14px, 장식 원형 제거, 타이틀 2.8em→1.4em, 단일 flex row
+- 통계 카드: padding 24px→12px, 아이콘 제거, 숫자 2em→1.2em, border-bottom→border-left
+- 모델+질문 통합: model_dropdown(scale=1) + refresh(scale=0) + question(scale=3) + generate(scale=1)
+- SQL 탭 순서: Examples(top, render=False 패턴) → 질문행 → SQL → 실행+CSV → 상태
+
+### 리뷰: PASS (0건 이슈)
+### 배포: 서버 active, GitHub 커밋 21359e6 (+117/-236 lines)
+
+## [2026-02-21 20:52] Dataframe 1줄 버그 근본 원인 수정
+- Context: 조회 결과 그리드가 1줄만 표시되는 문제가 여러 CSS 수정에도 해결되지 않음
+- Root Cause: `.gradio-container .block { overflow: visible !important }` 가 Gradio 6.6 Dataframe의 가상 스크롤 높이 측정(offsetHeight)을 깨뜨림. Block wrapper의 inline `overflow: hidden`을 덮어써서 가상 스크롤이 viewport 높이를 0으로 계산 → 1줄만 렌더링
+- Fix: `.block` 규칙을 `:not(:has(.table-container))` 셀렉터로 분리하여 Dataframe 블록만 네이티브 overflow 유지
+- `.panel`에서도 `overflow: visible !important` 제거
+- Result: 배포 완료, 서비스 정상 실행
+
+## [2026-02-21 22:00] DB 스캔 및 스키마/Examples 업데이트
+- Context: 사용자가 4개 테이블의 조인 관계 탐색 및 Examples 10개 확장 요청
+- DB Scan 결과:
+  - MOVE_ITEM_MASTER: 31,025 rows, 77 columns (직원 마스터)
+  - MOVE_CASE_ITEM: 148,029 rows, 60 columns (배치안 상세)
+  - MOVE_CASE_CNST_MASTER: 1,082,117 rows, 40 columns (제약조건)
+  - MOVE_ORG_MASTER: 14,713 rows, 48 columns (조직 마스터)
+- 검증된 JOIN 경로 5개:
+  1. ITEM_MASTER ↔ CASE_ITEM: FTR_MOVE_STD_ID + EMP_ID
+  2. CASE_ITEM ↔ CNST_MASTER: FTR_MOVE_STD_ID + CASE_ID + CASE_DET_ID + REV_ID
+  3. CNST_MASTER ↔ ORG_MASTER: FTR_MOVE_STD_ID + ORG_ID
+  4. CASE_ITEM → ORG_MASTER: FTR_MOVE_STD_ID + NEW_ORG_ID = ORG_ID
+  5. ITEM_MASTER ↔ ORG_MASTER: FTR_MOVE_STD_ID + org_nm matching
+- 변경 파일: app.py (schema_info_markdown + Examples), text2sql_pipeline.py (SYSTEM_PROMPT)
+- Review: NEEDS_IMPROVEMENT → Fix 완료 (누락 컬럼 추가, CNST↔ORG 예제 추가)

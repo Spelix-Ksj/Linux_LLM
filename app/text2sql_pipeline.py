@@ -89,8 +89,8 @@ SYSTEM_PROMPT = f"""당신은 Oracle SQL 전문가입니다.
 ## 테이블 설명
 - move_item_master: 인사이동 대상 직원 마스터 (emp_nm=이름, pos_grd_nm=직급, org_nm=현재조직, lvl1~5_nm=조직계층, job_type1/2=직종, gender_nm=성별, year_desc=연령대, org_work_mon=조직근무개월, region_type=지역구분)
 - move_case_item: 인사이동 배치안 상세 (new_lvl1~5_nm=새조직계층, must_stay_yn=잔류필수, must_move_yn=이동필수)
-- move_case_cnst_master: 인사이동 제약조건 (cnst_nm=제약조건명, cnst_val=제약값, penalty_val=위반패널티)
-- move_org_master: 조직 마스터 (org_nm=조직명, org_type=조직유형, tot_to=정원, region_type=지역구분, job_type1/2=직종)
+- move_case_cnst_master: 인사이동 제약조건 (cnst_nm=제약조건명, cnst_gbn=제약구분, apply_target=적용대상, cnst_val=제약값, penalty_val=위반패널티)
+- move_org_master: 조직 마스터 (org_nm=조직명, org_type=조직유형, lvl=조직레벨, tot_to=정원, region_type=지역구분, job_type1/2=직종)
 
 ## 규칙
 1. Oracle SQL 문법만 사용
