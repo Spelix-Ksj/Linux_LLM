@@ -605,15 +605,19 @@ with gr.Blocks(
                 inputs=question_input,
             )
 
-            # Model + Question + Generate in 1 row
+            # Row 1: Model selection
             with gr.Row():
                 model_dropdown = gr.Dropdown(
                     label="모델",
                     choices=get_display_choices(),
                     value=DEFAULT_MODEL_KEY,
-                    scale=1,
+                    scale=3,
                 )
-                refresh_btn = gr.Button("새로고침", size="sm", scale=0)
+                refresh_btn = gr.Button("새로고침", size="sm", scale=1)
+                model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY), scale=4)
+
+            # Row 2: Question input
+            with gr.Row():
                 question_input.render()
                 generate_btn = gr.Button(
                     "SQL 생성",
@@ -622,8 +626,6 @@ with gr.Blocks(
                     min_width=120,
                     elem_classes=["primary-btn"],
                 )
-
-            model_status = gr.Markdown(value=_build_model_status(DEFAULT_MODEL_KEY))
 
             # Generated SQL
             sql_output = gr.Textbox(
