@@ -1,5 +1,5 @@
 """
-Step 6: Gradio 웹 UI (v3 — Split Generate/Execute, Editable SQL, History SQL, Animations)
+HR Text2SQL Dashboard — Premium SaaS-style UI
 자연어로 Oracle HR DB에 질의하는 웹 인터페이스
 실행: python app.py
 """
@@ -12,155 +12,478 @@ import gradio as gr
 import pandas as pd
 
 from text2sql_pipeline import generate_sql, execute_sql, generate_report
-from config import GRADIO_HOST, GRADIO_PORT, DEFAULT_MODEL_KEY, MODEL_REGISTRY
+from config import GRADIO_HOST, GRADIO_PORT, DEFAULT_MODEL_KEY, MODEL_REGISTRY, TARGET_TABLES
 from model_registry import get_display_choices, get_available_models
+
+
+# ===== Google Fonts =====
+custom_head = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
+
+
+# ===== Hero Header HTML =====
+def _build_hero_header():
+    """Build the gradient hero header with live badge, clock, KPI badges, and title."""
+    n_models = len([k for k, v in MODEL_REGISTRY.items() if v.get("enabled")])
+    n_tables = len(TARGET_TABLES)
+    return f"""
+    <div style="
+        position: relative;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        border-radius: 20px;
+        padding: 40px 48px 36px 48px;
+        box-shadow: 0 20px 60px rgba(102, 126, 234, 0.35);
+        overflow: hidden;
+        margin-bottom: 24px;
+        animation: fadeInUp 0.6s ease-out;
+    ">
+        <!-- Decorative circles -->
+        <div style="
+            position: absolute; top: -40px; right: -40px;
+            width: 200px; height: 200px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 50%;
+        "></div>
+        <div style="
+            position: absolute; bottom: -60px; left: 60px;
+            width: 160px; height: 160px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 50%;
+        "></div>
+        <div style="
+            position: absolute; top: 30px; left: 40%;
+            width: 80px; height: 80px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+        "></div>
+        <div style="
+            position: absolute; bottom: 10px; right: 25%;
+            width: 120px; height: 120px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 50%;
+        "></div>
+
+        <!-- Top bar: live badge + clock on left, KPI badges on right -->
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+        ">
+            <!-- Left: Live badge + Clock -->
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="
+                    display: flex; align-items: center; gap: 8px;
+                    background: rgba(255,255,255,0.15);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 50px;
+                    padding: 6px 16px;
+                    font-size: 13px;
+                    color: white;
+                    font-weight: 600;
+                ">
+                    <span style="
+                        display: inline-block;
+                        width: 8px; height: 8px;
+                        background: #4ade80;
+                        border-radius: 50%;
+                        animation: pulse-dot 2s infinite;
+                        box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+                    "></span>
+                    Live
+                </div>
+                <span id="hero-clock" style="
+                    color: rgba(255,255,255,0.85);
+                    font-size: 13px;
+                    font-weight: 500;
+                    letter-spacing: 0.3px;
+                "></span>
+            </div>
+
+            <!-- Right: KPI badges -->
+            <div style="display: flex; gap: 12px;">
+                <div style="
+                    display: flex; flex-direction: column; align-items: center; justify-content: center;
+                    width: 64px; height: 64px;
+                    background: rgba(255,255,255,0.15);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 50%;
+                ">
+                    <span style="color: white; font-weight: 800; font-size: 18px; line-height: 1;">{n_models}</span>
+                    <span style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 500;">Models</span>
+                </div>
+                <div style="
+                    display: flex; flex-direction: column; align-items: center; justify-content: center;
+                    width: 64px; height: 64px;
+                    background: rgba(255,255,255,0.15);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    border-radius: 50%;
+                ">
+                    <span style="color: white; font-weight: 800; font-size: 18px; line-height: 1;">{n_tables}</span>
+                    <span style="color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 500;">Tables</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Title -->
+        <div style="position: relative; z-index: 1;">
+            <h1 style="
+                color: white;
+                font-size: 2.8em;
+                font-weight: 800;
+                margin: 0 0 8px 0;
+                letter-spacing: -0.5px;
+                text-shadow: 0 2px 10px rgba(0,0,0,0.15);
+                line-height: 1.1;
+            ">HR Text2SQL</h1>
+            <p style="
+                color: rgba(255,255,255,0.8);
+                font-size: 1.1em;
+                margin: 0;
+                font-weight: 500;
+                letter-spacing: 0.2px;
+            ">자연어로 Oracle HR 데이터베이스에 질의합니다</p>
+        </div>
+    </div>
+    """
+
+
+# ===== Stat Cards HTML =====
+def _build_stat_cards(total_queries=0, success_rate=0, avg_rows=0):
+    """Build the 3-column stat cards row."""
+    cards = [
+        {
+            "label": "총 질의 수",
+            "value": total_queries,
+            "suffix": "",
+            "color": "#3b82f6",
+            "icon_bg": "rgba(59, 130, 246, 0.12)",
+            "icon": "\U0001f50d",
+            "delay": "0s",
+        },
+        {
+            "label": "성공률",
+            "value": success_rate,
+            "suffix": "%",
+            "color": "#10b981",
+            "icon_bg": "rgba(16, 185, 129, 0.12)",
+            "icon": "\u2705",
+            "delay": "0.1s",
+        },
+        {
+            "label": "평균 조회 건수",
+            "value": avg_rows,
+            "suffix": "",
+            "color": "#8b5cf6",
+            "icon_bg": "rgba(139, 92, 246, 0.12)",
+            "icon": "\U0001f4ca",
+            "delay": "0.2s",
+        },
+    ]
+
+    cards_html = ""
+    for card in cards:
+        suffix_attr = f' data-suffix="{card["suffix"]}"' if card["suffix"] else ""
+        display_val = f'{card["value"]}{card["suffix"]}'
+        cards_html += f"""
+        <div style="
+            flex: 1;
+            background: white;
+            border-radius: 16px;
+            padding: 24px 28px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border-bottom: 4px solid {card['color']};
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: default;
+            animation: fadeInUp 0.5s ease-out {card['delay']} both;
+        "
+        onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,0.12)';"
+        onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 12px rgba(0,0,0,0.06)';"
+        >
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div style="color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                        {card['label']}
+                    </div>
+                    <div style="font-size: 2em; font-weight: 800; color: #1f2937; animation: countUp 0.6s ease-out;"
+                         data-counter="{card['value']}"{suffix_attr}>
+                        {display_val}
+                    </div>
+                </div>
+                <div style="
+                    width: 48px; height: 48px;
+                    background: {card['icon_bg']};
+                    border-radius: 12px;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 22px;
+                ">{card['icon']}</div>
+            </div>
+        </div>
+        """
+
+    return f"""
+    <div style="
+        display: flex;
+        gap: 20px;
+        margin-bottom: 24px;
+    ">
+        {cards_html}
+    </div>
+    """
 
 
 # ===== CSS =====
 custom_css = """
-/* === 전체 배경 및 폰트 === */
+/* ===== SaaS Dashboard Theme ===== */
+
+/* Global */
 .gradio-container {
-    max-width: 1200px !important;
+    max-width: 1280px !important;
     margin: auto !important;
-    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+    font-family: 'Inter', 'Pretendard', 'Apple SD Gothic Neo', sans-serif !important;
+    background: #f0f2f5 !important;
+    padding: 24px !important;
 }
 
-/* === 헤더 스타일 === */
-.main-title {
-    text-align: center !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-size: 2.2em !important;
-    font-weight: 800 !important;
-    margin-bottom: 0 !important;
+/* Live badge pulse */
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
 }
-.sub-title {
-    text-align: center !important;
+
+/* Fade in animation */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes countUp {
+    from { opacity: 0; transform: scale(0.5); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* Tab navigation - pill style */
+.tabs > .tab-nav {
+    background: white !important;
+    border-radius: 14px !important;
+    padding: 6px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+    margin-bottom: 20px !important;
+    border: none !important;
+}
+.tabs > .tab-nav > button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    padding: 10px 24px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: none !important;
     color: #6b7280 !important;
-    font-size: 1.05em !important;
-    margin-top: 4px !important;
+}
+.tabs > .tab-nav > button:hover {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+}
+.tabs > .tab-nav > button.selected {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.35) !important;
+    border-bottom: none !important;
 }
 
-/* === 카드 스타일 (섹션 구분) === */
+/* Model section card */
 .model-section {
-    background: linear-gradient(to right, #f0f4ff, #faf5ff) !important;
-    border: 1px solid #e0e7ff !important;
-    border-radius: 12px !important;
-    padding: 16px !important;
-    margin-bottom: 12px !important;
+    background: white !important;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+    padding: 20px 24px !important;
+    margin-bottom: 20px !important;
+    animation: fadeInUp 0.5s ease-out !important;
 }
 
-/* === 버튼 스타일 === */
+/* Primary button - gradient */
 .primary-btn {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
     border: none !important;
     color: white !important;
     font-weight: 600 !important;
-    border-radius: 10px !important;
-    padding: 10px 24px !important;
-    transition: all 0.3s ease !important;
+    border-radius: 12px !important;
+    padding: 12px 28px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+    font-size: 14px !important;
 }
 .primary-btn:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.45) !important;
+}
+.primary-btn:active {
+    transform: translateY(0) !important;
 }
 
-/* === 상태 표시 === */
-.status-success { color: #059669 !important; font-weight: 600 !important; }
-.status-error { color: #dc2626 !important; font-weight: 600 !important; }
-
-/* === SQL 코드 블록 === */
-.sql-output {
-    border-radius: 10px !important;
-    border: 1px solid #e5e7eb !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
-}
-
-/* === 데이터프레임 === */
-.result-table {
-    border-radius: 10px !important;
-    overflow: hidden !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
-}
-
-/* === 탭 스타일 === */
-.tabs > .tab-nav > button {
+/* Execute button - different color */
+.execute-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    border: none !important;
+    color: white !important;
     font-weight: 600 !important;
-    font-size: 1.05em !important;
-    padding: 10px 20px !important;
+    border-radius: 12px !important;
+    padding: 12px 28px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3) !important;
+    font-size: 14px !important;
 }
-.tabs > .tab-nav > button.selected {
-    border-bottom: 3px solid #667eea !important;
-    color: #667eea !important;
+.execute-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.45) !important;
 }
 
-/* === 아코디언 (보고서) === */
+/* Input fields */
+.gradio-container textarea, .gradio-container input[type="text"] {
+    border-radius: 12px !important;
+    border: 2px solid #e5e7eb !important;
+    transition: all 0.3s ease !important;
+    font-size: 14px !important;
+}
+.gradio-container textarea:focus, .gradio-container input[type="text"]:focus {
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1) !important;
+}
+
+/* Dataframe table */
+.result-table {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+    border: none !important;
+    animation: fadeInUp 0.5s ease-out !important;
+}
+
+/* Report accordion */
 .report-accordion {
-    border: 1px solid #e0e7ff !important;
-    border-radius: 10px !important;
-    margin-top: 12px !important;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important;
+    margin-top: 16px !important;
+    overflow: hidden !important;
 }
 
-/* === 스키마 탭 크기 보정 === */
-.schema-tab { font-size: 1.1em !important; line-height: 1.8 !important; }
-.schema-tab table { width: 100% !important; }
-.schema-tab th, .schema-tab td { padding: 8px 12px !important; }
+/* SQL output area */
+.sql-area textarea {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important;
+    background: #1e1e2e !important;
+    color: #cdd6f4 !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+}
+.sql-area textarea:focus {
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
+}
+
+/* Status textbox */
+.status-display input {
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+}
+
+/* Schema tab */
+.schema-tab {
+    font-size: 1.05em !important;
+    line-height: 1.8 !important;
+    padding: 20px !important;
+}
+.schema-tab table { width: 100% !important; border-collapse: collapse !important; }
+.schema-tab th {
+    background: #f8fafc !important;
+    font-weight: 600 !important;
+    padding: 10px 14px !important;
+    text-align: left !important;
+}
+.schema-tab td { padding: 8px 14px !important; border-bottom: 1px solid #f1f5f9 !important; }
+
+/* History SQL display */
+.history-sql-display {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+/* Download file */
+.download-section {
+    margin-top: 8px !important;
+}
 """
 
 
-# ===== React-style JavaScript effects =====
+# ===== JavaScript =====
 custom_js = """
 function() {
-    // Fade-in animation for elements
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
-        }
-        .gradio-container .tabs > .tab-nav > button { transition: all 0.3s ease !important; }
-        .gradio-container .tabs > .tab-nav > button:hover { transform: scale(1.05); }
-        .gradio-container .tabs > .tab-nav > button.selected { animation: pulse 2s infinite; }
-        .gradio-container input, .gradio-container textarea { transition: border-color 0.3s ease, box-shadow 0.3s ease !important; }
-        .gradio-container input:focus, .gradio-container textarea:focus {
-            border-color: #667eea !important;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15) !important;
-        }
-        .result-table { animation: fadeInUp 0.5s ease-out; }
-        .report-accordion { animation: fadeInUp 0.6s ease-out; }
-        .model-section { animation: slideIn 0.4s ease-out; }
-    `;
-    document.head.appendChild(style);
+    // ---- Live Clock ----
+    function updateClock() {
+        var el = document.getElementById('hero-clock');
+        if (!el) return;
+        var now = new Date();
+        var pad = function(n) { return String(n).padStart(2, '0'); };
+        var dateStr = now.getFullYear() + '년 ' + (now.getMonth()+1) + '월 ' + now.getDate() + '일 ';
+        var ampm = now.getHours() >= 12 ? '오후' : '오전';
+        var h = now.getHours() > 12 ? now.getHours() - 12 : (now.getHours() === 0 ? 12 : now.getHours());
+        el.textContent = dateStr + ampm + ' ' + pad(h) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
 
-    // Observe for dynamically loaded content and animate
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === 1 && node.querySelector) {
-                    const targets = node.querySelectorAll('.result-table, .report-accordion, .sql-output');
-                    targets.forEach((el) => { el.style.animation = 'fadeInUp 0.5s ease-out'; });
-                    if (node.classList && (node.classList.contains('result-table') || node.classList.contains('report-accordion'))) {
-                        node.style.animation = 'fadeInUp 0.5s ease-out';
-                    }
+    // ---- Number Counter Animation ----
+    function animateCounters() {
+        document.querySelectorAll('[data-counter]').forEach(function(el) {
+            if (el.dataset.animated) return;
+            el.dataset.animated = 'true';
+            var target = parseFloat(el.dataset.counter);
+            var isPercent = el.dataset.suffix === '%';
+            if (isNaN(target) || target === 0) {
+                el.textContent = isPercent ? '0%' : '0';
+                return;
+            }
+            var current = 0;
+            var duration = 1000;
+            var steps = 40;
+            var increment = target / steps;
+            var stepTime = duration / steps;
+            var timer = setInterval(function() {
+                current += increment;
+                if (current >= target) {
+                    current = target;
+                    clearInterval(timer);
                 }
-            });
+                el.textContent = isPercent ? current.toFixed(0) + '%' : Math.round(current).toLocaleString();
+            }, stepTime);
         });
-    });
+    }
 
-    const container = document.querySelector('.gradio-container');
-    if (container) {
-        observer.observe(container, { childList: true, subtree: false });
+    // Run counter animation initially and on DOM changes
+    setTimeout(animateCounters, 500);
+    let counterTimeout = null;
+    const counterObserver = new MutationObserver(() => {
+        if (counterTimeout) clearTimeout(counterTimeout);
+        counterTimeout = setTimeout(animateCounters, 300);
+    });
+    const statArea = document.querySelector('.gradio-container');
+    if (statArea) {
+        counterObserver.observe(statArea, { childList: true, subtree: true });
     }
 }
 """
@@ -219,6 +542,30 @@ move_case_item ──case_id──> move_case_cnst_master
 _history_lock = threading.Lock()
 _query_history = []  # List of dicts (display fields)
 _query_history_sqls = []  # Parallel list of full SQL strings
+
+
+# ===== 통계 추적 =====
+_stats_lock = threading.Lock()
+_stats = {"total": 0, "success": 0, "total_rows": 0}
+
+
+def _update_stats(status, row_count):
+    """Update global query statistics."""
+    with _stats_lock:
+        _stats["total"] += 1
+        if status == "성공":
+            _stats["success"] += 1
+        _stats["total_rows"] += row_count
+
+
+def _get_stat_values():
+    """Return (total_queries, success_rate, avg_rows) tuple."""
+    with _stats_lock:
+        total = _stats["total"]
+        success = _stats["success"]
+        rate = round(success / total * 100) if total > 0 else 0
+        avg = round(_stats["total_rows"] / total) if total > 0 else 0
+        return total, rate, avg
 
 
 def _add_to_history(question, model_key, status, count, sql):
@@ -321,9 +668,17 @@ def process_generate(question: str, model_key: str, progress=gr.Progress()):
 
 # ===== SQL 실행 및 결과 반환 =====
 def process_execute(sql_text: str, question: str, model_key: str, reasoning: str, progress=gr.Progress()):
-    """생성된 SQL을 실행하고 결과 반환"""
+    """생성된 SQL을 실행하고 결과 반환 (stat cards도 갱신)"""
     if not sql_text or not sql_text.strip():
-        return pd.DataFrame(), "실행할 SQL이 없습니다.", "", _get_history(), _get_history_sqls()
+        total, rate, avg = _get_stat_values()
+        return (
+            pd.DataFrame(),
+            "실행할 SQL이 없습니다.",
+            "",
+            _get_history(),
+            _get_history_sqls(),
+            _build_stat_cards(total, rate, avg),
+        )
     if model_key not in MODEL_REGISTRY:
         model_key = DEFAULT_MODEL_KEY
 
@@ -332,7 +687,16 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
 
     if result["error"]:
         _add_to_history(question or "(직접 실행)", model_key, "오류", 0, sql_text)
-        return pd.DataFrame(), f"오류: {result['error']}", "", _get_history(), _get_history_sqls()
+        _update_stats("오류", 0)
+        total, rate, avg = _get_stat_values()
+        return (
+            pd.DataFrame(),
+            f"오류: {result['error']}",
+            "",
+            _get_history(),
+            _get_history_sqls(),
+            _build_stat_cards(total, rate, avg),
+        )
 
     df = result["result"]
 
@@ -341,23 +705,36 @@ def process_execute(sql_text: str, question: str, model_key: str, reasoning: str
 
     progress(1.0, desc="완료")
     _add_to_history(question or "(직접 실행)", model_key, "성공", len(df), sql_text)
+    _update_stats("성공", len(df))
 
-    return df, f"조회 완료: {len(df)}건", report, _get_history(), _get_history_sqls()
+    total, rate, avg = _get_stat_values()
+    return (
+        df,
+        f"조회 완료: {len(df)}건",
+        report,
+        _get_history(),
+        _get_history_sqls(),
+        _build_stat_cards(total, rate, avg),
+    )
 
 
 # ===== Gradio UI 구성 =====
-with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, theme=gr.themes.Soft()) as demo:
-    gr.Markdown(
-        "# 인사정보 Text2SQL 시스템",
-        elem_classes=["main-title"],
-    )
-    gr.Markdown(
-        "자연어로 질문하면 Oracle HR DB에서 결과를 조회합니다",
-        elem_classes=["sub-title"],
-    )
+with gr.Blocks(
+    title="HR Text2SQL Dashboard",
+    css=custom_css,
+    js=custom_js,
+    head=custom_head,
+    theme=gr.themes.Soft(),
+) as demo:
 
-    # 모델 선택 영역 (탭 밖 — 항상 표시)
-    with gr.Row(elem_id="model-row", elem_classes=["model-section"]):
+    # Hero Header
+    hero_header = gr.HTML(value=_build_hero_header())
+
+    # Stat Cards
+    stat_cards = gr.HTML(value=_build_stat_cards(0, 0, 0))
+
+    # Model Selection
+    with gr.Row(elem_classes=["model-section"]):
         model_dropdown = gr.Dropdown(
             label="모델 선택",
             choices=get_display_choices(),
@@ -374,7 +751,7 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
     with gr.Tabs():
         # ===== 탭 1: SQL 질의 =====
         with gr.Tab("SQL 질의"):
-            with gr.Row(elem_id="query-row"):
+            with gr.Row():
                 question_input = gr.Textbox(
                     label="질문 입력",
                     placeholder="예: 직급별 인원 수를 구해줘",
@@ -390,7 +767,11 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
                     elem_classes=["primary-btn"],
                 )
 
-            status_output = gr.Textbox(label="상태", interactive=False)
+            status_output = gr.Textbox(
+                label="상태",
+                interactive=False,
+                elem_classes=["status-display"],
+            )
 
             sql_output = gr.Textbox(
                 label="생성된 SQL",
@@ -398,6 +779,7 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
                 max_lines=20,
                 interactive=True,
                 info="SQL을 직접 수정한 후 'SQL 실행' 버튼을 클릭하세요",
+                elem_classes=["sql-area"],
             )
 
             with gr.Row():
@@ -405,11 +787,11 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
                     "SQL 실행",
                     variant="primary",
                     min_width=120,
-                    elem_classes=["primary-btn"],
+                    elem_classes=["execute-btn"],
                 )
                 download_btn = gr.Button("CSV 다운로드", size="sm", variant="secondary")
 
-            download_file = gr.File(label="다운로드", visible=False)
+            download_file = gr.File(label="다운로드", visible=False, elem_classes=["download-section"])
 
             result_output = gr.Dataframe(
                 label="조회 결과",
@@ -440,7 +822,11 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
                 headers=["시간", "모델", "질문", "상태", "건수"],
                 wrap=True,
             )
-            history_sql_display = gr.Code(label="선택된 SQL", language="sql")
+            history_sql_display = gr.Code(
+                label="선택된 SQL",
+                language="sql",
+                elem_classes=["history-sql-display"],
+            )
             history_sqls_state = gr.State([])
             clear_history_btn = gr.Button("이력 삭제", size="sm", variant="stop")
 
@@ -480,11 +866,11 @@ with gr.Blocks(title="HR Text2SQL 시스템", js=custom_js, css=custom_css, them
         concurrency_limit=3,
     )
 
-    # SQL 실행 (버튼 클릭)
+    # SQL 실행 (버튼 클릭) — now also updates stat_cards
     execute_btn.click(
         fn=process_execute,
         inputs=[sql_output, question_input, model_dropdown, reasoning_state],
-        outputs=[result_output, status_output, report_output, history_output, history_sqls_state],
+        outputs=[result_output, status_output, report_output, history_output, history_sqls_state, stat_cards],
         concurrency_limit=3,
     )
 

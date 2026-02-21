@@ -257,3 +257,20 @@
 - 개발자 1: text2sql_pipeline.py 수정
 - 개발자 2: app.py 전면 수정
 - 검토자: 비판적 코드 리뷰
+- 수정자: 검토 이슈 6건 수정
+
+### 리뷰 결과
+- 1차 리뷰: NEEDS_IMPROVEMENT (15개 이슈 발견)
+- 수정 후 배포: HIGH 3건 + MEDIUM 3건 수정 완료
+- 주요 수정사항:
+  - CSS/theme를 demo.launch()에서 gr.Blocks()로 이동 (Critical — 스타일 미적용 문제)
+  - SQL Textbox에 interactive=True + info 안내 텍스트 추가
+  - MutationObserver 범위를 특정 클래스만으로 제한 (성능 개선)
+  - execute_sql에서 trailing comment 제거 후 SQL 래핑
+  - raw LLM 출력 에러 메시지 제거 (보안)
+  - _on_history_select 타입 가드 추가
+
+### 배포 결과
+- 서버 192.168.10.40: app.py + text2sql_pipeline.py 배포 완료
+- text2sql-ui 서비스: active (running), PID 2827584
+- GitHub 커밋: 986b83e (main 브랜치)
