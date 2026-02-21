@@ -229,23 +229,20 @@ def generate_report(question: str, sql: str, df: pd.DataFrame, reasoning: str = 
     return "\n".join(report_parts)
 
 
-def ask_hr(question: str, model_key: str = None) -> dict:
-    """
-    자연어 질문을 SQL로 변환하고 실행
+def generate_sql(question: str, model_key: str = None) -> dict:
+    """자연어 질문을 SQL로만 변환 (실행하지 않음)
 
     Args:
         question: 자연어 질문 (예: "직급별 인원 수를 구해줘")
         model_key: 사용할 모델 키 (None이면 DEFAULT_MODEL_KEY 사용)
 
     Returns:
-        dict with keys: question, sql, result (DataFrame), error (str or None)
+        dict with keys: sql (str), reasoning (str), error (str or None)
     """
-    error = None
     generated_sql = ""
     reasoning = ""
-    df = pd.DataFrame()
 
-    # 1단계: LLM 호출 (SQL 생성)
+    # LLM 호출 (SQL 생성)
     try:
         active_llm = get_llm(model_key)
         messages = [
@@ -265,49 +262,97 @@ def ask_hr(question: str, model_key: str = None) -> dict:
     except Exception as e:
         logger.error(f"LLM invocation failed: {e}")
         return {
-            "question": question,
             "sql": "",
-            "result": pd.DataFrame(),
-            "error": "LLM 서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
             "reasoning": reasoning,
+            "error": "LLM 서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
         }
 
     # 빈 응답 체크
     if not generated_sql:
         return {
-            "question": question,
-            "sql": f"(raw response: {raw_sql[:500]})",
-            "result": pd.DataFrame(),
-            "error": "LLM이 SQL을 생성하지 못했습니다.",
+            "sql": "(SQL 파싱 실패)",
             "reasoning": reasoning,
+            "error": "LLM이 SQL을 생성하지 못했습니다.",
         }
 
     # 안전성 검사
     if not _is_safe_sql(generated_sql):
         return {
-            "question": question,
             "sql": generated_sql,
-            "result": pd.DataFrame(),
-            "error": "안전하지 않은 SQL이 감지되었습니다. SELECT 문만 허용됩니다.",
             "reasoning": reasoning,
+            "error": "안전하지 않은 SQL이 감지되었습니다. SELECT 문만 허용됩니다.",
         }
 
-    # 2단계: SQL 실행 (최대 1000행 제한 + 30초 타임아웃)
+    return {
+        "sql": generated_sql,
+        "reasoning": reasoning,
+        "error": None,
+    }
+
+
+def execute_sql(sql_text: str) -> dict:
+    """SQL을 실행하여 결과 반환
+
+    Args:
+        sql_text: 실행할 SQL 문
+
+    Returns:
+        dict with keys: result (pd.DataFrame), error (str or None)
+    """
+    # 안전성 재검증 (사용자가 SQL을 편집했을 수 있음)
+    if not _is_safe_sql(sql_text):
+        return {
+            "result": pd.DataFrame(),
+            "error": "안전하지 않은 SQL이 감지되었습니다. SELECT 문만 허용됩니다.",
+        }
+
+    # SQL 실행 (최대 1000행 제한 + 30초 타임아웃)
     try:
-        safe_sql = f"SELECT * FROM ({generated_sql}) WHERE ROWNUM <= 1000"
+        sql_text = _strip_sql_comments(sql_text)
+        safe_sql = f"SELECT * FROM ({sql_text}) WHERE ROWNUM <= 1000"
         with engine.connect() as conn:
             conn.connection.dbapi_connection.call_timeout = 30000
             df = pd.read_sql(text(safe_sql), conn)
     except Exception as e:
         logger.error(f"SQL execution failed: {e}")
-        error = "SQL 실행 중 오류가 발생했습니다. 질문을 다시 작성해 주세요."
+        return {
+            "result": pd.DataFrame(),
+            "error": "SQL 실행 중 오류가 발생했습니다. 질문을 다시 작성해 주세요.",
+        }
 
     return {
-        "question": question,
-        "sql": generated_sql,
         "result": df,
-        "error": error,
-        "reasoning": reasoning,
+        "error": None,
+    }
+
+
+def ask_hr(question: str, model_key: str = None) -> dict:
+    """
+    자연어 질문을 SQL로 변환하고 실행 (하위 호환용)
+
+    Args:
+        question: 자연어 질문 (예: "직급별 인원 수를 구해줘")
+        model_key: 사용할 모델 키 (None이면 DEFAULT_MODEL_KEY 사용)
+
+    Returns:
+        dict with keys: question, sql, result (DataFrame), error (str or None), reasoning
+    """
+    gen_result = generate_sql(question, model_key)
+    if gen_result["error"]:
+        return {
+            "question": question,
+            "sql": gen_result["sql"],
+            "result": pd.DataFrame(),
+            "error": gen_result["error"],
+            "reasoning": gen_result["reasoning"],
+        }
+    exec_result = execute_sql(gen_result["sql"])
+    return {
+        "question": question,
+        "sql": gen_result["sql"],
+        "result": exec_result["result"],
+        "error": exec_result["error"],
+        "reasoning": gen_result["reasoning"],
     }
 
 

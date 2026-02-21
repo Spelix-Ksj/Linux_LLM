@@ -228,3 +228,32 @@
 ### 권장 사항 (사용자 조치 필요)
 - SSH 루트 비밀번호 변경 (서버 192.168.10.40)
 - Oracle DB 비밀번호 변경 (HRAI_CON 계정)
+
+---
+
+## [2026-02-21] 미션 6: UI 기능 개선 (SQL 분리, 이력 SQL, 스키마 확대, JS 효과)
+
+### 원본 요청
+- SQL 생성 버튼과 SQL 실행 버튼 분리 (현재는 "SQL 생성 및 실행" 1개 버튼)
+- 생성된 SQL 텍스트를 사용자가 수정 가능하게
+- 질의 이력 탭에서 행 선택 시 해당 SQL 쿼리 표시
+- 스키마 정보 탭이 너무 작게 보임 → 크기 개선
+- "반응형"은 Responsive가 아니라 React 스타일 JavaScript 효과를 의미 (사용자 명확화)
+
+### 설계 결정
+1. **text2sql_pipeline.py**: `ask_hr()` 내부를 2개 함수로 분리
+   - `generate_sql(question, model_key)` → SQL만 생성, dict{sql, reasoning, error} 반환
+   - `execute_sql(sql_text)` → SQL 실행, dict{result(DataFrame), error} 반환
+   - `ask_hr()` 유지 (하위 호환, 두 함수 순차 호출)
+2. **app.py UI 변경**:
+   - "SQL 생성" 버튼 + "SQL 실행" 버튼 분리
+   - `gr.Code` → `gr.Textbox(lines=8, language="sql")` 또는 `gr.Code(interactive=True)` (편집 가능)
+   - `_query_history`에 SQL 저장 추가
+   - 질의 이력 탭에 `gr.Code` 추가하여 선택된 행의 SQL 표시
+   - 스키마 정보 탭: CSS에서 폰트 크기/여백 확대
+   - CSS 반응형 미디어쿼리 제거, JavaScript 효과 추가 (애니메이션, 트랜지션)
+
+### 팀 구성
+- 개발자 1: text2sql_pipeline.py 수정
+- 개발자 2: app.py 전면 수정
+- 검토자: 비판적 코드 리뷰
