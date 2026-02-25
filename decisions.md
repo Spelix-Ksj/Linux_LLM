@@ -543,3 +543,27 @@
 ### 배포
 - 서버: 192.168.10.40, systemctl restart text2sql-ui
 - 상태: 정상 가동
+
+---
+
+## [2026-02-25] 미션: ComboBox 너비 + REV_ID='999' 규칙 완화 + 깨진 Example 교체
+
+### 요청
+1. 이동번호 ComboBox 너비 2.5배 확대
+2. "사업소별 전입/전출 인원을 보여줘" Example 제거 (0건 반환)
+3. 4개 쿼리에서 rev_id='999'가 있으면 결과 안 나옴 → 규칙 완화
+
+### 핵심 결정: REV_ID='999' 규칙 변경
+- **이전**: "케이스/배치/제약 조회 시 REV_ID='999' 기본 추가" (규칙 11)
+- **이후**: "사용자가 '최종 확정'을 명시적으로 요청한 경우에만 REV_ID='999' 추가, 그 외 생략"
+- **이유**: 실제 데이터에 rev_id='999'가 존재하지 않는 경우가 많아 빈 결과 반환
+
+### 수정 내용
+1. app.py: move_std_dropdown scale=1→2, min_width=160→400
+2. app.py: Example "사업소별 전입/전출" → "권역별 평균 근무개월"
+3. text2sql_pipeline.py: 규칙 11 완화, 시스템 개요 REV_ID 설명 수정
+4. text2sql_pipeline.py: JOIN 패턴 헤더에서 rev_id 의무 문구 제거
+5. text2sql_pipeline.py: Few-shot 3개에서 rev_id='999' 조건 제거
+
+### 배포
+- HTTP 200 확인

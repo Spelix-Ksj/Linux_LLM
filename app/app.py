@@ -1598,7 +1598,7 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                     ["위반 건수가 가장 많은 제약조건 TOP 10"],
                     ["최근 케이스의 리비전 목록을 보여줘"],
                     ["필수이동 직원 중 실제 이동한 직원 목록"],
-                    ["사업소별 전입/전출 인원을 보여줘"],
+                    ["권역별 평균 근무개월을 보여줘"],
                     ["직무전환(job_type 변경) 직원 목록을 보여줘"],
                     ["총 감점이 높은 사업소 TOP 10"],
                 ],
@@ -1630,8 +1630,8 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                     show_label=False,
                     choices=_move_choices,
                     value=_move_choices[0][1] if _move_choices else "0",
-                    scale=1,
-                    min_width=160,
+                    scale=2,
+                    min_width=400,
                     container=False,
                 )
                 question_input.render()
