@@ -172,13 +172,13 @@ WHERE ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
 GROUP BY lvl2_nm
 ORDER BY lvl2_nm
 
-질문: 이동이 확정된 직원의 이름과 새 부서를 보여줘
+질문: 배치된 직원의 이름과 새 부서를 보여줘
 SQL:
 SELECT m.emp_nm AS "이름", m.pos_grd_nm AS "직급", m.org_nm AS "현재부서", c.new_lvl3_nm AS "새부서"
 FROM HRAI_CON.move_item_master m
 JOIN HRAI_CON.move_case_item c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-WHERE c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = m.ftr_move_std_id)
-  AND c.fixed_yn = 'Y'
+WHERE c.new_org_id IS NOT NULL
+  AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = m.ftr_move_std_id)
   AND m.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
 FETCH FIRST 50 ROWS ONLY
 
@@ -207,12 +207,7 @@ GROUP BY p.cnst_nm
 ORDER BY SUM(p.penalty_cnt) DESC
 FETCH FIRST 10 ROWS ONLY
 
-질문: 부부 동시배치 불가 직원 목록
-SQL:
-SELECT e.emp_no1 AS "사번1", e.emp_no2 AS "사번2", e.reason_type AS "사유"
-FROM HRAI_CON.move_emp_exclusion e
-WHERE e.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
-  AND e.reason_type = '부부'"""
+"""
 
 
 def _clean_sql(raw_sql: str) -> str:

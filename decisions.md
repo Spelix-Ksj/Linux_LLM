@@ -567,3 +567,21 @@
 
 ### 배포
 - HTTP 200 확인
+
+---
+
+## [2026-02-25] 미션: 사용자 직접 테스트 후 깨진 Example 3건 수정
+
+### 사용자 테스트 결과
+1. "부부 동시배치 불가 직원 목록" → move_emp_exclusion 테이블에 데이터 0건 → Example 제거
+2. "이동이 확정된 직원" → fixed_yn이 전부 NULL → "배치된 직원" (new_org_id IS NOT NULL)으로 변경
+3. "사업소별 정원(TO) 비교" → LLM이 lvl=3 조건 추가하여 0건 → Few-shot에는 lvl 조건 없음 (LLM 자체 판단 문제)
+
+### 수정 내용
+- app.py: "부부 동시배치 불가" Example 제거, "이동이 확정된" → "배치된 직원" 변경 (20→19개)
+- text2sql_pipeline.py: "부부 동시배치 불가" Few-shot 제거, "이동이 확정된" → fixed_yn='Y' → new_org_id IS NOT NULL
+- 배포 완료: HTTP 200
+
+### 교훈
+- fixed_yn, reason_type 등 데이터가 비어있는 컬럼이 있을 수 있음 — Example 작성 시 반드시 데이터 존재 여부 확인
+- move_emp_exclusion은 현재 빈 테이블

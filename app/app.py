@@ -1574,7 +1574,7 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                 render=False,
             )
 
-            # 예시 질문 (at top of tab) — DB 검증 완료 20개
+            # 예시 질문 (at top of tab) — DB 검증 완료 19개
             gr.Examples(
                 examples=[
                     # 직원 기본 통계 (단일 테이블)
@@ -1590,10 +1590,9 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                     # 직원 필터 (단일 테이블)
                     ["필수이동 대상 직원 목록을 알려줘"],
                     ["자기신청이동 직원 목록을 보여줘"],
-                    ["부부 동시배치 불가 직원 목록을 알려줘"],
                     ["필수유보 기준 목록과 유보 개월을 보여줘"],
                     # JOIN 쿼리 (2테이블 이상)
-                    ["이동이 확정된 직원의 이름과 새 부서를 보여줘"],
+                    ["배치된 직원의 이름과 새 부서를 보여줘"],
                     ["사업소별 정원(TO)과 배치 인원을 비교해줘"],
                     ["위반 건수가 가장 많은 제약조건 TOP 10"],
                     ["최근 케이스의 리비전 목록을 보여줘"],
