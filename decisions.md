@@ -501,3 +501,45 @@
 ### 교훈
 - C# 앱의 런타임 계산 속성 ≠ DB 물리 컬럼. DDL 원본과 교차 검증 필수
 - 잔류/전입/전출 인원은 MOVE_CASE_ITEM에서 new_org_id 기준 COUNT 집계로만 산출 가능
+
+---
+
+## [2026-02-25] 미션: 20개 Example 검증 + 배치 리포트 SQL 수정 + 스키마 정보 일관성 수정
+
+### 요청
+- 20개 Example(JOIN 포함)을 DB 검증하여 교체
+- 배치 결과 리포트 탭의 "조회 오류" 전면 수정
+- 스키마 마크다운(UI)과 SYSTEM_PROMPT 간 컬럼명 일관성 확보
+
+### 수정 요약
+
+#### app.py — 배치 리포트 SQL 수정 (Developer A)
+- `m.org_id` → `m.lvl5_id` (5개소)
+- `p.penalty_nm` → `p.cnst_nm`, `p.vio_cnt` → `p.penalty_cnt`, `p.opt_val` → `p.penalty_sum` (11개소)
+- `rev_id = 999` → `rev_id = '999'` (VARCHAR2 타입, 8개소)
+- `c.must_stay_yn = '1'` → `= 1` (NUMBER 타입)
+
+#### app.py — 20개 Example 교체 (Developer B)
+- 기존 15개 단일 테이블 쿼리 → 12개 단일 + 8개 JOIN 쿼리 (총 20개)
+- 전수 DB 검증 완료 (20/20 PASS)
+
+#### app.py — 스키마 마크다운 수정 (Critical Review 후)
+- FTR_MOVE_STD: base_ym→std_ym, base_ymd→wk_std_ymd, use_yn→close_yn
+- MOVE_CASE_MASTER: case_nm→case_name, confirm_yn 제거
+- MOVE_CASE_DETAIL: opt_status→case_det_nm
+- MOVE_CASE_PENALTY_INFO: penalty_nm→cnst_nm, vio_cnt→penalty_cnt, opt_val→penalty_sum
+- MOVE_STAY_RULE: rule_nm/stay_mon→org_type/job_type/year_cnt_st/year_cnt_fi/move_stay
+- REV_ID 설명: VARCHAR2 타입 명시
+- must_move_yn/must_stay_yn: 문자열 '1' → 숫자 1로 통일 (6개소)
+
+#### text2sql_pipeline.py — SYSTEM_PROMPT 스키마 수정
+- 위와 동일한 컬럼명 수정 (테이블 설명 + JOIN 패턴 + 규칙 + Few-shot 예시)
+- REV_ID = 999 → '999' 전면 수정
+
+### 리뷰 결과
+- 1차 리뷰: NEEDS_IMPROVEMENT (CRITICAL 7개 — 스키마 마크다운 미수정, 타입 불일치)
+- 수정 후 배포 완료: HTTP 200 확인
+
+### 배포
+- 서버: 192.168.10.40, systemctl restart text2sql-ui
+- 상태: 정상 가동

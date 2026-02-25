@@ -88,14 +88,14 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 - 조직계층: LVL1(본사) → LVL2(권역 A~E) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
   - 권역: A=서울, B=경기/인천, C=광역점, D=아울렛, E=기타
 - FTR_MOVE_STD_ID: 이동번호 — 거의 모든 MOVE_* 테이블의 공통 조인 키 (물리적 FK 없음)
-- REV_ID=999: 최종 확정 리비전 (케이스 상세/배치결과/제약조건 조회 시 기본 필터)
+- REV_ID='999': 최종 확정 리비전 (VARCHAR2 타입 — 반드시 문자열 '999'로 비교)
 
 ## 테이블 스키마 정보
 {_table_info}
 
 ## 테이블 설명 (15개 핵심 테이블)
 ### 이동기준
-- ftr_move_std: 이동기준 마스터 (ftr_move_std_id=이동번호 PK, std_nm=이동기준명, base_ym=기준년월, base_ymd=기준일자, use_yn=사용여부)
+- ftr_move_std: 이동기준 마스터 (ftr_move_std_id=이동번호 PK, std_nm=이동기준명, std_ym=기준년월, wk_std_ymd=기준일자, close_yn=마감여부)
 
 ### 직원 데이터
 - move_item_master: 직원 마스터 — 76컬럼 (emp_id=직원ID PK, emp_no=사번, emp_nm=이름, pos_grd_nm=직급, org_nm=현재조직, lvl1~5_nm=조직계층, job_type1/2/3=직종, gender_nm=성별, year_desc=연령대, org_work_mon=조직근무개월, c_area_work_mon=권역근무개월, region_type=지역구분, tot_score=종합점수, married=기혼여부, self_move_yn=자기신청이동)
@@ -106,24 +106,24 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 - move_network_change: 사업소변경정보 (chg_id=변경ID, org_id=조직ID, before/after 컬럼으로 변경 전후 비교)
 
 ### 케이스 관리
-- move_case_master: 배치 케이스 (case_id=케이스ID PK, case_nm=케이스명, case_desc=설명, confirm_yn=확정여부)
-- move_case_detail: 케이스 상세/리비전 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id, rev_nm=리비전명, opt_status=최적화상태)
+- move_case_master: 배치 케이스 (case_id=케이스ID PK, case_name=케이스명, case_desc=설명)
+- move_case_detail: 케이스 상세/리비전 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id, rev_nm=리비전명, case_det_nm=상세명)
 - move_case_item: 배치 결과 — 직원별 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+emp_id, new_org_id=새조직ID, new_lvl1~5_nm=새조직계층, new_job_type1/2=새직종, must_stay_yn=잔류필수, must_move_yn=이동필수, fixed_yn=확정여부)
 - move_case_org: 조직별 TO 설정 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+org_id, tot_to=배치가능인원, org_nm=조직명, lvl=조직레벨). 주의: 잔류/전입/전출 인원 컬럼은 없음 — move_case_item에서 new_org_id 기준 COUNT 집계 필요
 
 ### 제약조건 & 감점
 - move_case_cnst_master: 제약조건 — 48개 코드 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+org_id+cnst_cd, cnst_nm=제약명, cnst_gbn=구분, use_yn=사용여부, cnst_val=제약값, penalty_val=감점값)
   주요 제약: TEAM001=TO초과불가, TEAM002=필수이동, TEAM003=미배치방지, TEAM004/006=징계/부부분리, TEAM007=점수균형±10%, TEAM020=이동비율, TEAM021=남성최소1인, TEAM033/035=이동제한기간
-- move_case_penalty_info: 감점 상세 (cnst_id=제약ID, penalty_nm=감점명, vio_cnt=위반건수, penalty_val=감점값, opt_val=최적화값)
+- move_case_penalty_info: 감점 상세 (cnst_id=제약ID, cnst_nm=제약명, penalty_cnt=위반건수, penalty_val=감점값, penalty_sum=감점합계)
 - move_jobtype_penalty_matrix: 직무 호환성 매트릭스 (jobtype_prop=직무속성, from/to 직무별 감점)
-- move_stay_rule: 필수유보 기준 (move_stay_rule_id=기준ID, rule_nm=규칙명, stay_mon=유보개월)
+- move_stay_rule: 필수유보 기준 (move_stay_rule_id=기준ID, org_type=조직유형, job_type=직종, year_cnt_st=시작연차, year_cnt_fi=종료연차, move_stay=유보개월)
 - move_emp_exclusion: 동시배치불가 직원 (emp_no1/emp_no2=사번쌍, reason_type=사유유형(부부/징계))
 
 ### ML 매핑
 - ml_map_dictionary: ML 직무분류 매핑 (dic_id=사전ID, src_val=원본값, tgt_val=매핑값, dic_type=사전유형)
 
 ## 주요 JOIN 패턴 (CASE 계열 테이블은 반드시 case_id+case_det_id+rev_id 조건 포함)
-- 직원+배치결과: move_item_master m JOIN move_case_item c ON m.ftr_move_std_id=c.ftr_move_std_id AND m.emp_id=c.emp_id AND c.rev_id=999
+- 직원+배치결과: move_item_master m JOIN move_case_item c ON m.ftr_move_std_id=c.ftr_move_std_id AND m.emp_id=c.emp_id AND c.rev_id='999'
 - 배치결과→새조직: move_case_item c JOIN move_org_master o ON c.ftr_move_std_id=o.ftr_move_std_id AND c.new_org_id=o.org_id
 - 제약조건+조직: move_case_cnst_master cn JOIN move_org_master o ON cn.ftr_move_std_id=o.ftr_move_std_id AND cn.org_id=o.org_id
 - 배치결과+감점: move_case_item ci JOIN move_case_penalty_info p ON ci.ftr_move_std_id=p.ftr_move_std_id AND ci.case_id=p.case_id AND ci.case_det_id=p.case_det_id AND ci.rev_id=p.rev_id
@@ -140,7 +140,7 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 8. 질문이 여러 테이블의 정보를 필요로 하면 적절한 JOIN을 사용하세요. JOIN 시 반드시 FTR_MOVE_STD_ID 조건을 맞추세요.
 9. 단일 테이블로 충분하면 JOIN하지 마세요. 다른 테이블의 고유 컬럼이 필요할 때만 JOIN하세요.
 10. 질문에 [이동번호(FTR_MOVE_STD_ID)=NNNNNN 조건 필수]가 포함된 경우, 모든 테이블의 WHERE절에 FTR_MOVE_STD_ID = NNNNNN 조건을 반드시 포함하세요.
-11. 케이스 상세/배치결과/제약조건 조회 시 REV_ID = 999 (최종 리비전) 조건을 기본 추가하세요.
+11. 케이스 상세/배치결과/제약조건 조회 시 REV_ID = '999' (VARCHAR2 타입, 문자열 비교) 조건을 기본 추가하세요.
 12. 조직 계층 분석 시 LVL1~5_NM 컬럼과 권역 분류(A~E)를 활용하세요.
 13. 수치 컬럼으로 정렬(ORDER BY)하거나 집계(SUM/AVG/MAX/MIN)할 때, 해당 컬럼에 NULL이 있을 수 있으므로 WHERE절에 IS NOT NULL 조건을 추가하세요. 예: ORDER BY org_work_mon DESC → WHERE org_work_mon IS NOT NULL ORDER BY org_work_mon DESC
 
@@ -177,7 +177,7 @@ SQL:
 SELECT m.emp_nm AS "이름", m.pos_grd_nm AS "직급", m.org_nm AS "현재부서", c.new_lvl3_nm AS "새부서"
 FROM HRAI_CON.move_item_master m
 JOIN HRAI_CON.move_case_item c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-WHERE c.rev_id = 999
+WHERE c.rev_id = '999'
   AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = m.ftr_move_std_id)
   AND c.fixed_yn = 'Y'
   AND m.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
@@ -194,20 +194,20 @@ LEFT JOIN HRAI_CON.move_case_item ci
     AND co.case_det_id = ci.case_det_id AND co.rev_id = ci.rev_id
     AND co.org_id = ci.new_org_id
 WHERE co.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
-  AND co.rev_id = 999
+  AND co.rev_id = '999'
   AND co.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = co.ftr_move_std_id)
 GROUP BY co.org_nm, co.tot_to
 ORDER BY (co.tot_to - COUNT(ci.emp_id)) DESC
 
 질문: 위반 건수가 많은 제약조건 TOP 10
 SQL:
-SELECT p.penalty_nm AS "제약조건", SUM(p.vio_cnt) AS "총위반건수", SUM(p.opt_val) AS "총감점"
+SELECT p.cnst_nm AS "제약조건", SUM(p.penalty_cnt) AS "총위반건수", SUM(p.penalty_sum) AS "총감점"
 FROM HRAI_CON.move_case_penalty_info p
-WHERE p.rev_id = 999
+WHERE p.rev_id = '999'
   AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = p.ftr_move_std_id)
   AND p.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
-GROUP BY p.penalty_nm
-ORDER BY SUM(p.vio_cnt) DESC
+GROUP BY p.cnst_nm
+ORDER BY SUM(p.penalty_cnt) DESC
 FETCH FIRST 10 ROWS ONLY
 
 질문: 부부 동시배치 불가 직원 목록

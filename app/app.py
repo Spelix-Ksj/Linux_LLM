@@ -69,8 +69,8 @@ def _get_move_std_stats(move_std_id):
                         (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid) AS emp_cnt,
                         (SELECT COUNT(*) FROM HRAI_CON.move_org_master WHERE ftr_move_std_id = :mid) AS org_cnt,
                         (SELECT COUNT(*) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = :mid) AS case_cnt,
-                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_move_yn = '1') AS must_move,
-                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_stay_yn = '1') AS must_stay
+                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_move_yn = 1) AS must_move,
+                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_stay_yn = 1) AS must_stay
                     FROM dual
                 """, {"mid": mid})
                 row = cur.fetchone()
@@ -110,7 +110,7 @@ def _cnst_summary_html(move_std_id):
                     SELECT c.cnst_cd, c.cnst_nm, c.cnst_gbn, c.use_yn, c.cnst_val, c.penalty_val,
                            COUNT(DISTINCT c.org_id) AS org_cnt
                     FROM HRAI_CON.MOVE_CASE_CNST_MASTER c
-                    WHERE c.ftr_move_std_id = :mid AND c.rev_id = 999
+                    WHERE c.ftr_move_std_id = :mid AND c.rev_id = '999'
                       AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     GROUP BY c.cnst_cd, c.cnst_nm, c.cnst_gbn, c.use_yn, c.cnst_val, c.penalty_val
                     ORDER BY c.use_yn DESC, c.cnst_cd
@@ -137,13 +137,13 @@ def _penalty_top_html(move_std_id):
                               dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT p.penalty_nm, SUM(p.vio_cnt) AS total_vio,
-                           MAX(p.penalty_val) AS unit_pen, SUM(p.opt_val) AS total_pen
+                    SELECT p.cnst_nm, SUM(p.penalty_cnt) AS total_vio,
+                           MAX(p.penalty_val) AS unit_pen, SUM(p.penalty_sum) AS total_pen
                     FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
-                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = '999' AND p.penalty_cnt > 0
                       AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
-                    GROUP BY p.penalty_nm
-                    ORDER BY SUM(p.opt_val) DESC
+                    GROUP BY p.cnst_nm
+                    ORDER BY SUM(p.penalty_sum) DESC
                     FETCH FIRST 20 ROWS ONLY
                 """, {"mid": mid})
                 rows = cur.fetchall()
@@ -170,17 +170,17 @@ def _org_violation_html(move_std_id):
                 cur.execute("""
                     SELECT cn.org_nm AS org_name,
                            COUNT(DISTINCT cn.cnst_cd) AS vio_cnst_cnt,
-                           SUM(p.vio_cnt) AS total_vio,
-                           SUM(p.opt_val) AS total_pen
+                           SUM(p.penalty_cnt) AS total_vio,
+                           SUM(p.penalty_sum) AS total_pen
                     FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
                     JOIN HRAI_CON.MOVE_CASE_CNST_MASTER cn
                         ON p.ftr_move_std_id = cn.ftr_move_std_id
                         AND p.case_id = cn.case_id AND p.case_det_id = cn.case_det_id
                         AND p.rev_id = cn.rev_id AND cn.org_id IS NOT NULL
-                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = '999' AND p.penalty_cnt > 0
                       AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     GROUP BY cn.org_nm
-                    ORDER BY SUM(p.opt_val) DESC
+                    ORDER BY SUM(p.penalty_sum) DESC
                     FETCH FIRST 30 ROWS ONLY
                 """, {"mid": mid})
                 rows = cur.fetchall()
@@ -215,13 +215,13 @@ def _report_summary_html(move_std_id):
                 cur.execute("""
                     SELECT 
                         COUNT(*) AS total,
-                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved,
-                        SUM(CASE WHEN c.must_stay_yn = '1' THEN 1 ELSE 0 END) AS stayed,
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.lvl5_id THEN 1 ELSE 0 END) AS moved,
+                        SUM(CASE WHEN c.must_stay_yn = 1 THEN 1 ELSE 0 END) AS stayed,
                         SUM(CASE WHEN c.new_org_id IS NULL THEN 1 ELSE 0 END) AS unplaced
                     FROM HRAI_CON.move_item_master m
                     LEFT JOIN HRAI_CON.move_case_item c 
                         ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-                        AND c.rev_id = 999
+                        AND c.rev_id = '999'
                         AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     WHERE m.ftr_move_std_id = :mid
                 """, {"mid": mid})
@@ -268,12 +268,12 @@ def _report_region_html(move_std_id):
                     SELECT 
                         NVL(m.lvl2_nm, '(미지정)') AS region,
                         COUNT(*) AS total,
-                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved,
-                        SUM(CASE WHEN c.new_org_id IS NULL OR c.new_org_id = m.org_id THEN 1 ELSE 0 END) AS stayed
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.lvl5_id THEN 1 ELSE 0 END) AS moved,
+                        SUM(CASE WHEN c.new_org_id IS NULL OR c.new_org_id = m.lvl5_id THEN 1 ELSE 0 END) AS stayed
                     FROM HRAI_CON.move_item_master m
                     LEFT JOIN HRAI_CON.move_case_item c 
                         ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-                        AND c.rev_id = 999
+                        AND c.rev_id = '999'
                         AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     WHERE m.ftr_move_std_id = :mid
                     GROUP BY m.lvl2_nm
@@ -302,13 +302,13 @@ def _report_penalty_top10_html(move_std_id):
                               dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT p.penalty_nm, SUM(p.vio_cnt) AS total_vio,
-                           MAX(p.penalty_val) AS unit_pen, SUM(p.opt_val) AS total_pen
+                    SELECT p.cnst_nm, SUM(p.penalty_cnt) AS total_vio,
+                           MAX(p.penalty_val) AS unit_pen, SUM(p.penalty_sum) AS total_pen
                     FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
-                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = '999' AND p.penalty_cnt > 0
                       AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
-                    GROUP BY p.penalty_nm
-                    ORDER BY SUM(p.opt_val) DESC
+                    GROUP BY p.cnst_nm
+                    ORDER BY SUM(p.penalty_sum) DESC
                     FETCH FIRST 10 ROWS ONLY
                 """, {"mid": mid})
                 rows = cur.fetchall()
@@ -335,19 +335,19 @@ def _report_must_move_html(move_std_id):
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT 
-                        CASE WHEN m.must_move_yn = '1' THEN '필수이동' 
-                             WHEN m.must_stay_yn = '1' THEN '필수유보'
+                        CASE WHEN m.must_move_yn = 1 THEN '필수이동'
+                             WHEN m.must_stay_yn = 1 THEN '필수유보'
                              ELSE '일반' END AS category,
                         COUNT(*) AS cnt,
-                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved_cnt
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.lvl5_id THEN 1 ELSE 0 END) AS moved_cnt
                     FROM HRAI_CON.move_item_master m
                     LEFT JOIN HRAI_CON.move_case_item c 
                         ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-                        AND c.rev_id = 999
+                        AND c.rev_id = '999'
                         AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     WHERE m.ftr_move_std_id = :mid
-                    GROUP BY CASE WHEN m.must_move_yn = '1' THEN '필수이동' 
-                                  WHEN m.must_stay_yn = '1' THEN '필수유보'
+                    GROUP BY CASE WHEN m.must_move_yn = 1 THEN '필수이동'
+                                  WHEN m.must_stay_yn = 1 THEN '필수유보'
                                   ELSE '일반' END
                     ORDER BY 1
                 """, {"mid": mid})
@@ -377,11 +377,11 @@ def _report_job_type_html(move_std_id):
                     SELECT 
                         NVL(m.job_type1, '(미지정)') AS job_type,
                         COUNT(*) AS total,
-                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.lvl5_id THEN 1 ELSE 0 END) AS moved
                     FROM HRAI_CON.move_item_master m
                     LEFT JOIN HRAI_CON.move_case_item c 
                         ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-                        AND c.rev_id = 999
+                        AND c.rev_id = '999'
                         AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
                     WHERE m.ftr_move_std_id = :mid
                     GROUP BY m.job_type1
@@ -987,7 +987,7 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 
 ### 핵심 연결 키
 - **FTR_MOVE_STD_ID** (이동번호): 거의 모든 MOVE_* 테이블의 공통 조인 키
-- **REV_ID = 999**: 최종 확정 리비전 (조회 시 기본 필터)
+- **REV_ID = '999'**: 최종 확정 리비전 (VARCHAR2 타입, 반드시 문자열 비교)
 
 ---
 
@@ -1017,9 +1017,9 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 |--------|--------|------|
 | ftr_move_std_id | 이동번호 | 이동기준 고유번호 (PK) |
 | std_nm | 기준명 | 이동기준 이름 |
-| base_ym | 기준년월 | YYYYMM 형식 |
-| base_ymd | 기준일자 | YYYYMMDD 형식 |
-| use_yn | 사용여부 | Y/N |
+| std_ym | 기준년월 | YYYYMM 형식 |
+| wk_std_ymd | 기준일자 | YYYYMMDD 형식 |
+| close_yn | 마감여부 | Y/N |
 
 ### 2. MOVE_ITEM_MASTER (직원 마스터)
 | 컬럼명 | 한글명 | 설명 |
@@ -1089,9 +1089,8 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 |--------|--------|------|
 | ftr_move_std_id | 이동번호 | PK |
 | case_id | 케이스ID | 배치안 번호 (PK) |
-| case_nm | 케이스명 | 배치안 이름 |
+| case_name | 케이스명 | 배치안 이름 |
 | case_desc | 설명 | 배치안 설명 |
-| confirm_yn | 확정여부 | 확정 여부 (Y/N) |
 
 ### 7. MOVE_CASE_DETAIL (케이스 상세/리비전)
 | 컬럼명 | 한글명 | 설명 |
@@ -1101,7 +1100,7 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 | case_det_id | 상세ID | 시나리오 상세 ID (PK) |
 | rev_id | 리비전ID | 수정 버전 (PK, 999=최종) |
 | rev_nm | 리비전명 | 리비전 이름 |
-| opt_status | 최적화상태 | 최적화 실행 상태 |
+| case_det_nm | 상세명 | 케이스 상세 이름 |
 
 ### 8. MOVE_CASE_ITEM (배치 결과 — 직원별)
 | 컬럼명 | 한글명 | 설명 |
@@ -1161,10 +1160,10 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 | ftr_move_std_id | 이동번호 | PK |
 | case_id / case_det_id / rev_id | 케이스 키 | PK |
 | cnst_id | 제약ID | 제약 고유 ID |
-| penalty_nm | 감점명 | 감점 항목명 |
-| vio_cnt | 위반건수 | 위반 건수 |
+| cnst_nm | 제약조건명 | 감점 항목명 |
+| penalty_cnt | 위반건수 | 위반 건수 |
 | penalty_val | 감점값 | 건당 감점 |
-| opt_val | 최적화값 | 위반건수 x 감점값 |
+| penalty_sum | 감점합계 | 위반건수 x 감점값 |
 
 ### 12. MOVE_JOBTYPE_PENALTY_MATRIX (직무 호환성 매트릭스)
 | 컬럼명 | 한글명 | 설명 |
@@ -1178,8 +1177,11 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 |--------|--------|------|
 | ftr_move_std_id | 이동번호 | PK |
 | move_stay_rule_id | 기준ID | 규칙 고유번호 (PK) |
-| rule_nm | 규칙명 | 유보 규칙 이름 |
-| stay_mon | 유보개월 | 유보 기간(개월) |
+| org_type | 조직유형 | 조직 유형 |
+| job_type | 직종 | 직종 |
+| year_cnt_st | 시작연차 | 적용 시작 연차 |
+| year_cnt_fi | 종료연차 | 적용 종료 연차 |
+| move_stay | 유보개월 | 유보 기간(개월) |
 
 ### 14. MOVE_EMP_EXCLUSION (동시배치불가 직원)
 | 컬럼명 | 한글명 | 설명 |
@@ -1572,29 +1574,33 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                 render=False,
             )
 
-            # 예시 질문 (at top of tab) — 30개, 15개 테이블 커버
+            # 예시 질문 (at top of tab) — DB 검증 완료 20개
             gr.Examples(
                 examples=[
-                    # 직원 기본 통계 (단일 테이블, 높은 성공률)
+                    # 직원 기본 통계 (단일 테이블)
                     ["전체 직원 수는 몇 명이야?"],
                     ["남자, 여자 인원 수를 알려줘"],
                     ["직급별 인원 수를 보여줘"],
                     ["30대 직원 목록을 보여줘"],
                     ["근무 기간이 가장 긴 직원 TOP 10을 알려줘"],
-                    # 조직 분석 (단일 테이블)
                     ["권역별 직원 수를 보여줘"],
-                    ["A권역(서울) 사업소 목록과 각 인원 수를 알려줘"],
-                    ["조직 레벨별 사업소 수를 알려줘"],
-                    # 이동기준 & 케이스 (단순 조회)
+                    # 이동기준 & 제약조건 (단일 테이블)
                     ["전체 이동기준(이동번호) 목록을 보여줘"],
-                    ["최근 이동번호의 케이스 목록을 알려줘"],
-                    # 직원 상세 (단일 테이블 필터)
+                    ["사용 중인 제약조건 목록을 보여줘"],
+                    # 직원 필터 (단일 테이블)
                     ["필수이동 대상 직원 목록을 알려줘"],
                     ["자기신청이동 직원 목록을 보여줘"],
                     ["부부 동시배치 불가 직원 목록을 알려줘"],
-                    # 기타 (단순 조회)
                     ["필수유보 기준 목록과 유보 개월을 보여줘"],
-                    ["사용 중인 제약조건 목록을 보여줘"],
+                    # JOIN 쿼리 (2테이블 이상)
+                    ["이동이 확정된 직원의 이름과 새 부서를 보여줘"],
+                    ["사업소별 정원(TO)과 배치 인원을 비교해줘"],
+                    ["위반 건수가 가장 많은 제약조건 TOP 10"],
+                    ["최근 케이스의 리비전 목록을 보여줘"],
+                    ["필수이동 직원 중 실제 이동한 직원 목록"],
+                    ["사업소별 전입/전출 인원을 보여줘"],
+                    ["직무전환(job_type 변경) 직원 목록을 보여줘"],
+                    ["총 감점이 높은 사업소 TOP 10"],
                 ],
                 inputs=question_input,
             )
