@@ -450,3 +450,31 @@
 - app.py gr.Examples 10개 → 31개 확장 (7개 카테고리)
 - 카테고리: 직원통계(5), 조직분석(5), 배치결과(5), 제약조건(4), 이동기준(3), 비교분석(4), 기타(5)
 - 15개 테이블 모두 커버 (move_item_detail 예시 추가로 완전 커버)
+
+---
+
+## [2026-02-25] #108 완료: 배치 결과 요약 리포트 기능
+
+### 원본 요청
+- 선택된 이동번호의 배치 결과를 자동으로 종합 분석하는 리포트 탭 추가
+- 총 대상자/배치완료/미배치, 권역별 이동현황, 감점 TOP 10, 필수이동/유보 처리현황, 직무별 배치현황
+- LLM을 사용한 자연어 요약 보고서
+
+### 변경 내용
+- app.py에 "배치 결과 리포트" 탭 (Tab 5) 추가 (+316행)
+- 7개 신규 함수: _report_summary_html(), _report_region_html(), _report_penalty_top10_html(), _report_must_move_html(), _report_job_type_html(), _report_llm_summary(), _run_batch_report()
+- UI: 요약 카드 4개(대상자/이동/유보/이동율%) + 2x2 테이블 레이아웃 + LLM 요약
+- LLM 호출: get_report_llm() + ThreadPoolExecutor(timeout=60초)
+
+### 리뷰 결과
+- 1차: NEEDS_IMPROVEMENT (CRITICAL 2건, WARNING 4건)
+- 수정사항:
+  - CRITICAL: _df_to_html XSS 수정 → html.escape() 적용
+  - CRITICAL: LLM Prompt Injection 방지 → safe() 새니타이저 적용
+  - WARNING: LLM invoke timeout → ThreadPoolExecutor(timeout=60) 래핑
+  - WARNING: 반환 순서 주석 추가, 모듈 레벨 import 정리
+  - 권역별 "잔류"→"미이동" 용어 명확화
+- 수정 후 배포: HTTP 200 정상 확인
+
+### 배포
+- SCP → text2sql-ui 서비스 재시작 → active (running), PID 2846540

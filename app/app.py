@@ -8,13 +8,16 @@ import datetime
 import re
 import tempfile
 import threading
+import concurrent.futures
+import html as _html_mod
 
 import gradio as gr
 import pandas as pd
 
-from text2sql_pipeline import generate_sql, execute_sql, generate_report
+from text2sql_pipeline import generate_sql, execute_sql, generate_report, get_report_llm
 from config import GRADIO_HOST, GRADIO_PORT, DEFAULT_MODEL_KEY, MODEL_REGISTRY, TARGET_TABLES
 from model_registry import get_display_choices, get_available_models
+from langchain_core.messages import HumanMessage, SystemMessage
 
 
 def _get_move_std_choices():
@@ -193,6 +196,271 @@ def _org_violation_html(move_std_id):
 def _run_cnst_analysis(move_std_id):
     """3개 분석을 실행하여 (summary, penalty, org) 반환"""
     return _cnst_summary_html(move_std_id), _penalty_top_html(move_std_id), _org_violation_html(move_std_id)
+
+
+
+# ===== 배치 결과 리포트 함수 =====
+
+def _report_summary_html(move_std_id):
+    """총 대상자/배치완료/미배치 요약 카드 HTML"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>', {}
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved,
+                        SUM(CASE WHEN c.must_stay_yn = '1' THEN 1 ELSE 0 END) AS stayed,
+                        SUM(CASE WHEN c.new_org_id IS NULL THEN 1 ELSE 0 END) AS unplaced
+                    FROM HRAI_CON.move_item_master m
+                    LEFT JOIN HRAI_CON.move_case_item c 
+                        ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
+                        AND c.rev_id = 999
+                        AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    WHERE m.ftr_move_std_id = :mid
+                """, {"mid": mid})
+                row = cur.fetchone()
+        if not row or row[0] == 0:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">배치 결과 데이터가 없습니다.</div>', {}
+        total, moved, stayed, unplaced = (int(v or 0) for v in row)
+        move_rate = round(moved / total * 100, 1) if total > 0 else 0
+        stats = {"total": total, "moved": moved, "stayed": stayed, "unplaced": unplaced, "move_rate": move_rate}
+        cards = [
+            {"label": "총 대상자", "value": f"{total:,}명", "color": "#3b82f6", "icon": "👥"},
+            {"label": "배치완료(이동)", "value": f"{moved:,}명", "color": "#10b981", "icon": "✅"},
+            {"label": "필수유보", "value": f"{stayed:,}명", "color": "#f59e0b", "icon": "⛔"},
+            {"label": "이동율", "value": f"{move_rate}%", "color": "#8b5cf6", "icon": "📊"},
+        ]
+        html = '<div style="display:flex;gap:16px;flex-wrap:wrap;">'
+        for c in cards:
+            html += (
+                f'<div style="flex:1;min-width:180px;background:white;border-radius:12px;padding:18px 22px;'
+                f'box-shadow:0 2px 10px rgba(0,0,0,0.06);border-left:4px solid {c["color"]};">'
+                f'<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">{c["icon"]} {c["label"]}</div>'
+                f'<div style="font-size:1.6em;font-weight:800;color:#111827;">{c["value"]}</div>'
+                f'</div>'
+            )
+        html += '</div>'
+        return html, stats
+    except Exception as e:
+        print(f"배치 결과 요약 조회 실패: {e}")
+        return '<div style="padding:12px;color:#ef4444;">요약 조회 오류</div>', {}
+
+
+def _report_region_html(move_std_id):
+    """권역별 이동현황 테이블"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>', []
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        NVL(m.lvl2_nm, '(미지정)') AS region,
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved,
+                        SUM(CASE WHEN c.new_org_id IS NULL OR c.new_org_id = m.org_id THEN 1 ELSE 0 END) AS stayed
+                    FROM HRAI_CON.move_item_master m
+                    LEFT JOIN HRAI_CON.move_case_item c 
+                        ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
+                        AND c.rev_id = 999
+                        AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    WHERE m.ftr_move_std_id = :mid
+                    GROUP BY m.lvl2_nm
+                    ORDER BY m.lvl2_nm
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">권역별 데이터 없음</div>', []
+        df = pd.DataFrame(rows, columns=["권역", "총원", "이동", "미이동"])
+        region_data = [{"region": r["권역"], "total": int(r["총원"]), "moved": int(r["이동"]), "stayed": int(r["미이동"])} for _, r in df.iterrows()]
+        return _cnst_df_to_html(df, title="권역별 이동현황"), region_data
+    except Exception as e:
+        print(f"권역별 이동현황 조회 실패: {e}")
+        return '<div style="padding:12px;color:#ef4444;">조회 오류</div>', []
+
+
+def _report_penalty_top10_html(move_std_id):
+    """감점 상위 10개 항목"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>', []
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT p.penalty_nm, SUM(p.vio_cnt) AS total_vio,
+                           MAX(p.penalty_val) AS unit_pen, SUM(p.opt_val) AS total_pen
+                    FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                      AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    GROUP BY p.penalty_nm
+                    ORDER BY SUM(p.opt_val) DESC
+                    FETCH FIRST 10 ROWS ONLY
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">감점 데이터 없음</div>', []
+        df = pd.DataFrame(rows, columns=["감점항목명", "총위반건수", "건당감점값", "총감점합계"])
+        penalty_data = [{"name": r["감점항목명"], "vio": int(r["총위반건수"]), "pen": float(r["총감점합계"])} for _, r in df.iterrows()]
+        return _cnst_df_to_html(df, title="감점 TOP 10", rank_col=True), penalty_data
+    except Exception as e:
+        print(f"감점 TOP 10 조회 실패: {e}")
+        return '<div style="padding:12px;color:#ef4444;">조회 오류</div>', []
+
+
+def _report_must_move_html(move_std_id):
+    """필수이동/필수유보 처리현황"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>', []
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        CASE WHEN m.must_move_yn = '1' THEN '필수이동' 
+                             WHEN m.must_stay_yn = '1' THEN '필수유보'
+                             ELSE '일반' END AS category,
+                        COUNT(*) AS cnt,
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved_cnt
+                    FROM HRAI_CON.move_item_master m
+                    LEFT JOIN HRAI_CON.move_case_item c 
+                        ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
+                        AND c.rev_id = 999
+                        AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    WHERE m.ftr_move_std_id = :mid
+                    GROUP BY CASE WHEN m.must_move_yn = '1' THEN '필수이동' 
+                                  WHEN m.must_stay_yn = '1' THEN '필수유보'
+                                  ELSE '일반' END
+                    ORDER BY 1
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">필수이동/유보 데이터 없음</div>', []
+        df = pd.DataFrame(rows, columns=["구분", "인원수", "이동완료"])
+        must_data = [{"category": r["구분"], "cnt": int(r["인원수"]), "moved": int(r["이동완료"])} for _, r in df.iterrows()]
+        return _cnst_df_to_html(df, title="필수이동/유보 처리현황"), must_data
+    except Exception as e:
+        print(f"필수이동/유보 조회 실패: {e}")
+        return '<div style="padding:12px;color:#ef4444;">조회 오류</div>', []
+
+
+def _report_job_type_html(move_std_id):
+    """직무별 배치현황"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>', []
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        NVL(m.job_type1, '(미지정)') AS job_type,
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN c.new_org_id IS NOT NULL AND c.new_org_id != m.org_id THEN 1 ELSE 0 END) AS moved
+                    FROM HRAI_CON.move_item_master m
+                    LEFT JOIN HRAI_CON.move_case_item c 
+                        ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
+                        AND c.rev_id = 999
+                        AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    WHERE m.ftr_move_std_id = :mid
+                    GROUP BY m.job_type1
+                    ORDER BY COUNT(*) DESC
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">직무별 데이터 없음</div>', []
+        df = pd.DataFrame(rows, columns=["직무", "총원", "이동"])
+        job_data = [{"job": r["직무"], "total": int(r["총원"]), "moved": int(r["이동"])} for _, r in df.iterrows()]
+        return _cnst_df_to_html(df, title="직무별 배치현황"), job_data
+    except Exception as e:
+        print(f"직무별 배치현황 조회 실패: {e}")
+        return '<div style="padding:12px;color:#ef4444;">조회 오류</div>', []
+
+
+def _report_llm_summary(stats, region_data, penalty_data, must_data, job_data):
+    """LLM을 호출하여 배치 결과를 자연어로 요약"""
+    if not stats:
+        return "(데이터가 없어 요약을 생성할 수 없습니다.)"
+    try:
+        safe = lambda s: str(s).replace(chr(10), ' ').replace(chr(13), '').replace('#', '').replace('`', '')[:100]
+
+        ctx_parts = []
+        ctx_parts.append(f"총 대상자: {stats.get('total',0):,}명, 이동완료: {stats.get('moved',0):,}명, "
+                         f"필수유보: {stats.get('stayed',0):,}명, 미배치: {stats.get('unplaced',0):,}명, "
+                         f"이동율: {stats.get('move_rate',0)}%")
+        if region_data:
+            region_strs = [f"{safe(r['region'])}({r['moved']}/{r['total']})" for r in region_data]
+            ctx_parts.append("권역별(이동/총원): " + ", ".join(region_strs))
+        if penalty_data:
+            pen_strs = [f"{safe(p['name'])}(위반{p['vio']}건,감점{p['pen']:.0f})" for p in penalty_data[:5]]
+            ctx_parts.append("주요 감점항목: " + ", ".join(pen_strs))
+        if must_data:
+            must_strs = [f"{safe(m['category'])}({m['moved']}/{m['cnt']}명 이동)" for m in must_data]
+            ctx_parts.append("필수이동/유보: " + ", ".join(must_strs))
+        if job_data:
+            job_strs = [f"{safe(j['job'])}({j['moved']}/{j['total']})" for j in job_data[:5]]
+            ctx_parts.append("직무별(이동/총원): " + ", ".join(job_strs))
+
+        context = chr(10).join(ctx_parts)
+
+        system_msg = ("당신은 HR 정기인사이동(HDTP) 배치 최적화 결과를 분석하는 전문가입니다. "
+                      "아래 배치 결과 데이터를 바탕으로 3~4문장의 한국어 요약을 작성하세요. "
+                      "핵심 수치와 특이사항을 중심으로 간결하게 정리하세요.")
+        user_msg = f"## 배치 결과 데이터{chr(10)}{context}{chr(10)}{chr(10)}위 데이터를 바탕으로 배치 결과 요약을 작성하세요."
+
+        llm = get_report_llm()
+        messages = [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(llm.invoke, messages)
+            resp = future.result(timeout=60)
+        return resp.content.strip()
+    except Exception as e:
+        print(f"LLM 요약 생성 실패: {e}")
+        if stats:
+            return (f"총 {stats.get('total',0):,}명 중 {stats.get('moved',0):,}명이 이동 배치되어 "
+                    f"이동율 {stats.get('move_rate',0)}%를 기록했습니다. "
+                    f"필수유보 {stats.get('stayed',0):,}명, 미배치 {stats.get('unplaced',0):,}명입니다. "
+                    f"(LLM 요약 생성에 실패하여 기본 요약을 표시합니다.)")
+        return "(요약 생성 실패)"
+
+def _run_batch_report(move_std_id):
+    """배치 결과 리포트의 모든 섹션을 실행하여 6개 출력을 반환"""
+    # 섹션 1: 요약 카드
+    summary_html, stats = _report_summary_html(move_std_id)
+    # 섹션 2: 권역별 이동현황
+    region_html, region_data = _report_region_html(move_std_id)
+    # 섹션 3: 감점 TOP 10
+    penalty_html, penalty_data = _report_penalty_top10_html(move_std_id)
+    # 섹션 4: 필수이동/유보 처리현황
+    must_html, must_data = _report_must_move_html(move_std_id)
+    # 섹션 5: 직무별 배치현황
+    job_html, job_data = _report_job_type_html(move_std_id)
+    # 섹션 6: LLM 자연어 요약
+    llm_summary = _report_llm_summary(stats, region_data, penalty_data, must_data, job_data)
+
+    # outputs 순서: summary, region, job, must, penalty, llm (event handler와 동일)
+    return summary_html, region_html, job_html, must_html, penalty_html, llm_summary
 
 # ===== Google Fonts =====
 custom_head = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
@@ -1102,7 +1370,7 @@ def _df_to_html(df):
         bg = '#ffffff' if i % 2 == 0 else '#f9fafb'
         html += f'<tr style="background:{bg};">'
         for val in row:
-            cell_val = '' if pd.isna(val) else str(val)
+            cell_val = '' if pd.isna(val) else _html_mod.escape(str(val))
             html += f'<td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;color:#111827;white-space:nowrap;">{cell_val}</td>'
         html += '</tr>'
     html += '</tbody></table>'
@@ -1470,6 +1738,44 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                     gr.Markdown("**사업소별 위반 현황**")
                     cnst_org_output = gr.HTML(value="")
 
+
+        # ===== 탭 5: 배치 결과 리포트 =====
+        with gr.Tab("배치 결과 리포트"):
+            gr.HTML("""
+            <div style="background:linear-gradient(135deg,#10b98110,#3b82f620);
+                        border-left:4px solid #10b981;border-radius:0 10px 10px 0;
+                        padding:10px 16px;margin-bottom:16px;font-size:13px;color:#374151;">
+                선택한 이동번호의 배치 최적화 결과를 종합적으로 분석합니다. 총 대상자, 권역별/직무별 이동현황, 감점 분석, LLM 요약을 제공합니다.
+            </div>
+            """)
+            with gr.Row(equal_height=True):
+                rpt_move_dropdown = gr.Dropdown(
+                    show_label=False,
+                    choices=_move_choices,
+                    value=_move_choices[0][1] if _move_choices else "0",
+                    scale=2, min_width=200, container=False,
+                )
+                rpt_generate_btn = gr.Button("리포트 생성", variant="primary", scale=0, min_width=120)
+            gr.Markdown("**배치 요약**")
+            rpt_summary_output = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("**권역별 이동현황**")
+                    rpt_region_output = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    gr.Markdown("**직무별 배치현황**")
+                    rpt_job_output = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("**필수이동/유보 처리현황**")
+                    rpt_must_output = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    gr.Markdown("**감점 TOP 10**")
+                    rpt_penalty_output = gr.HTML(value="")
+            gr.Markdown("**LLM 자연어 요약**")
+            rpt_llm_output = gr.Markdown(value="")
+
+
     # Footer
     gr.HTML("""
     <div style="text-align:center;padding:20px 0 8px 0;color:#9ca3af;font-size:12px;border-top:1px solid #e5e7eb;margin-top:24px;">
@@ -1551,6 +1857,14 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
         fn=_run_cnst_analysis,
         inputs=[cnst_move_dropdown],
         outputs=[cnst_summary_output, cnst_penalty_output, cnst_org_output],
+        concurrency_limit=3,
+    )
+
+    # 배치 결과 리포트 생성
+    rpt_generate_btn.click(
+        fn=_run_batch_report,
+        inputs=[rpt_move_dropdown],
+        outputs=[rpt_summary_output, rpt_region_output, rpt_job_output, rpt_must_output, rpt_penalty_output, rpt_llm_output],
         concurrency_limit=3,
     )
 
