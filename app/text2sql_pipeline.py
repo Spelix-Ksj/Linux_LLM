@@ -109,7 +109,7 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 - move_case_master: 배치 케이스 (case_id=케이스ID PK, case_nm=케이스명, case_desc=설명, confirm_yn=확정여부)
 - move_case_detail: 케이스 상세/리비전 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id, rev_nm=리비전명, opt_status=최적화상태)
 - move_case_item: 배치 결과 — 직원별 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+emp_id, new_org_id=새조직ID, new_lvl1~5_nm=새조직계층, new_job_type1/2=새직종, must_stay_yn=잔류필수, must_move_yn=이동필수, fixed_yn=확정여부)
-- move_case_org: 조직별 TO 설정 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+org_id, alg_tot_to=배치가능인원, stay_cnt=잔류인원, move_in_cnt=전입인원, move_out_cnt=전출인원)
+- move_case_org: 조직별 TO 설정 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+org_id, tot_to=배치가능인원, org_nm=조직명, lvl=조직레벨). 주의: 잔류/전입/전출 인원 컬럼은 없음 — move_case_item에서 new_org_id 기준 COUNT 집계 필요
 
 ### 제약조건 & 감점
 - move_case_cnst_master: 제약조건 — 48개 코드 (복합PK: ftr_move_std_id+case_id+case_det_id+rev_id+org_id+cnst_cd, cnst_nm=제약명, cnst_gbn=구분, use_yn=사용여부, cnst_val=제약값, penalty_val=감점값)
@@ -172,16 +172,21 @@ WHERE c.rev_id = 999
   AND m.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
 FETCH FIRST 50 ROWS ONLY
 
-질문: 사업소별 정원과 현재 인원을 비교해줘
+질문: 사업소별 정원과 현재 배치 인원을 비교해줘
 SQL:
-SELECT o.org_nm AS "사업소", o.tot_to AS "정원", co.stay_cnt AS "현재인원",
-       (o.tot_to - co.stay_cnt) AS "잔여TO"
-FROM HRAI_CON.move_org_master o
-JOIN HRAI_CON.move_case_org co ON o.ftr_move_std_id = co.ftr_move_std_id AND o.org_id = co.org_id
-WHERE co.rev_id = 999
-  AND co.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = o.ftr_move_std_id)
-  AND o.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
-ORDER BY (o.tot_to - co.stay_cnt) DESC
+SELECT co.org_nm AS "사업소", co.tot_to AS "정원(TO)",
+       COUNT(ci.emp_id) AS "배치인원",
+       (co.tot_to - COUNT(ci.emp_id)) AS "잔여TO"
+FROM HRAI_CON.move_case_org co
+LEFT JOIN HRAI_CON.move_case_item ci
+    ON co.ftr_move_std_id = ci.ftr_move_std_id AND co.case_id = ci.case_id
+    AND co.case_det_id = ci.case_det_id AND co.rev_id = ci.rev_id
+    AND co.org_id = ci.new_org_id
+WHERE co.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
+  AND co.rev_id = 999
+  AND co.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = co.ftr_move_std_id)
+GROUP BY co.org_nm, co.tot_to
+ORDER BY (co.tot_to - COUNT(ci.emp_id)) DESC
 
 질문: 위반 건수가 많은 제약조건 TOP 10
 SQL:

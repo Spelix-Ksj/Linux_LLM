@@ -1129,10 +1129,13 @@ LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
 | case_det_id | 상세ID | PK |
 | rev_id | 리비전ID | PK |
 | org_id | 조직ID | PK |
-| alg_tot_to | 배치가능인원 | 총 TO |
-| stay_cnt | 잔류인원 | 잔류 직원 수 |
-| move_in_cnt | 전입인원 | 전입 직원 수 |
-| move_out_cnt | 전출인원 | 전출 직원 수 |
+| org_nm | 조직명 | 사업소/부서명 |
+| lvl | 조직레벨 | 조직 계층 레벨 |
+| tot_to | 배치가능인원 | 케이스별 TO (정원) |
+| rmk | 비고 | 비고 |
+| val01~val10 | 확장속성 | 범용 수치 속성 |
+
+> **주의**: 잔류/전입/전출 인원 컬럼은 없음. move_case_item에서 new_org_id 기준 COUNT 집계 필요.
 
 ### 10. MOVE_CASE_CNST_MASTER (제약조건)
 | 컬럼명 | 한글명 | 설명 |

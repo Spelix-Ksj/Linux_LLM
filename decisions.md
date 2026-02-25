@@ -478,3 +478,26 @@
 
 ### 배포
 - SCP → text2sql-ui 서비스 재시작 → active (running), PID 2846540
+
+---
+
+## [2026-02-25] MOVE_CASE_ORG 가짜 컬럼 버그 수정
+
+### 문제
+- 사용자 SQL "사업소별 정원과 현재 인원 비교" 실행 시 ORA-00904: "CO"."STAY_CNT": invalid identifier
+- `stay_cnt`, `alg_tot_to`, `move_in_cnt`, `move_out_cnt`는 실제 DB에 존재하지 않는 컬럼
+- HDTP C# 앱에서 런타임 메모리 계산 속성을 DB 컬럼으로 착각하여 SYSTEM_PROMPT에 기재
+
+### 근거
+- DDL 원본: `C:\Projects\HDTPSource\ETC\DATA\20211224\TABLE_ALL.sql` 1661~1720행
+- C# 모델: `AMOVE_CASE_ORG.cs` — `StayEmpCnt`는 프로퍼티 (DB 컬럼 아님)
+- 실제 컬럼: ftr_move_std_id, case_id, case_det_id, rev_id, org_id, org_nm, lvl, tot_to, rmk, val01~10
+
+### 수정 내용
+1. **text2sql_pipeline.py:112** — 테이블 설명에서 가짜 컬럼 제거, 실제 컬럼(tot_to, org_nm, lvl) 기재 + 주의사항 추가
+2. **text2sql_pipeline.py:175-184** — Few-shot 예시 SQL을 MOVE_CASE_ITEM LEFT JOIN + COUNT(ci.emp_id) 패턴으로 교체
+3. **app.py:1132-1135** — 스키마 정보 마크다운에서 가짜 컬럼 제거, 실제 컬럼 기재 + 경고 블록쿼트
+
+### 교훈
+- C# 앱의 런타임 계산 속성 ≠ DB 물리 컬럼. DDL 원본과 교차 검증 필수
+- 잔류/전입/전출 인원은 MOVE_CASE_ITEM에서 new_org_id 기준 COUNT 집계로만 산출 가능
