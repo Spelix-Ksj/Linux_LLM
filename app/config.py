@@ -32,12 +32,29 @@ DB_CONFIG = {
     "sid": os.environ.get("ORACLE_SID", "HISTPRD"),
 }
 
-# 대상 테이블 목록
+# 대상 테이블 목록 (HDTP 인사 이동 배치 시스템 핵심 테이블)
 TARGET_TABLES = [
-    "move_item_master",
-    "move_case_item",
-    "move_case_cnst_master",
-    "move_org_master",
+    # 이동기준 마스터
+    "ftr_move_std",              # 이동기준 (이동번호별 기준정보)
+    # 직원 데이터
+    "move_item_master",          # 전환배치대상자 (직원 마스터, 76컬럼)
+    "move_item_detail",          # 전환배치발령정보 (메일 발송)
+    # 조직 데이터
+    "move_org_master",           # 사업소마스터 (조직 계층 LVL1~5)
+    "move_network_change",       # 사업소변경정보 (조직 개편)
+    # 케이스 관리
+    "move_case_master",          # 케이스마스터 (배치 시나리오)
+    "move_case_detail",          # 케이스상세정보 (리비전 관리)
+    "move_case_item",            # 전환배치결과 (직원별 배치 결과)
+    "move_case_org",             # 사업소설정정보 (조직별 TO 배정)
+    # 제약조건 & 감점
+    "move_case_cnst_master",     # 제약정보 (48개 제약코드)
+    "move_case_penalty_info",    # 전환배치감점정보 (감점 상세)
+    "move_jobtype_penalty_matrix",  # 감점매트릭스 (직무 호환성)
+    "move_stay_rule",            # 필수유보이동기준
+    "move_emp_exclusion",        # 동시배치불가직원 (부부/징계)
+    # ML 매핑
+    "ml_map_dictionary",         # ML 매핑사전 (직무분류 매핑)
 ]
 
 # vLLM 설정 (하위 호환용 — 기존 코드에서 직접 참조하는 경우를 위해 유지)

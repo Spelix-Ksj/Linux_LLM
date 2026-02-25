@@ -374,3 +374,79 @@
 
 ### 배포
 - SCP 배포 → text2sql-ui 서비스 재시작 → HTTP 200 정상 확인
+
+---
+
+## [2026-02-25] 미션: HDTP 시스템 전체 분석 (대규모 리서치)
+
+### 원본 요청
+- AI 인사 이동 배치 프로그램(HDTP)의 핵심을 파악하여 Text2SQL 개선에 활용
+- 소스(C:\Projects\HDTPSource), 참고문서, Oracle DB 스키마 전수 조사
+- 전체 프로세스 흐름 파악 후 메모리에 저장
+
+### 팀 구성 (4명 병렬)
+1. 탐색자1: 소스 코드 구조 & 아키텍처 분석
+2. 탐색자2: 참고 문서 & SQL 스크립트 분석
+3. 탐색자3: 비즈니스 로직 & 프로세스 플로우 심층 분석
+4. DB전문가: Oracle DB 스키마 전수 조사
+
+### 핵심 발견 사항
+
+**시스템**: 현대백화점 정기인사 전환배치 최적화 시스템
+**기술**: C# WPF .NET 4.7.2 + Oracle + IBM CPLEX MIP + DevExpress
+**핵심 프로세스**:
+1. 이동기준(FTR_MOVE_STD) 설정
+2. 직원/조직 데이터 로드
+3. 케이스 생성 → 시나리오 상세 → 리비전 관리
+4. 48개 제약조건 적용 (TEAM001~048, 필수/감점 구분)
+5. CPLEX MIP 최적화 실행 (결정변수: E{직원}.O{조직}, 감점 최소화)
+6. 결과 확정 → 발령 통보
+
+**DB**: 62개 테이블 (핵심 22개 MOVE_* + FTR_MOVE_STD + ML_MAP_DICTIONARY)
+  - 물리적 FK 없음, FTR_MOVE_STD_ID로 논리적 연결
+  - 최대 테이블: MOVE_CASE_CNST_MASTER (451K rows)
+
+**48개 제약 코드**: 필수(TO초과불가, 이동필수, 징계분리, 부부분리, 이동제한기간) +
+  감점(균형배분, 이동비율, 성비, 연차분배, 직무호환성, 희망직무가점 등)
+
+### 메모리 저장
+- C:\Users\Administrator\.claude\projects\D--Dev-Linux-LLM\memory\hdtp-system-analysis.md (상세)
+- C:\Users\Administrator\.claude\projects\D--Dev-Linux-LLM\memory\MEMORY.md (요약)
+
+---
+
+## [2026-02-25] #105 → #102 → #103: TARGET_TABLES 확장 및 도메인 지식 반영
+
+### #105 완료: config.py TARGET_TABLES 확장
+- 4개 → 15개 테이블로 확장 (이동기준, 직원, 조직, 케이스, 제약조건, ML 매핑)
+
+### #102 완료: SYSTEM_PROMPT에 HDTP 도메인 지식 반영
+- text2sql_pipeline.py 83-144행 (22행 → 62행)
+- 추가: 시스템 개요, 15개 테이블 설명, 5개 JOIN 패턴, 12개 규칙
+- 신규 규칙: #11(REV_ID=999 기본 필터), #12(조직 계층 분석 가이드)
+- 복합 PK 명시: CASE 계열 테이블에 ftr_move_std_id+case_id+case_det_id+rev_id 포함
+- JOIN 패턴에 rev_id=999 조건 및 case_det_id/rev_id 키 추가
+
+### #103 완료: 스키마 정보 탭 전면 업데이트
+- app.py schema_info_markdown (116행 → 277행)
+- 15개 테이블 상세 컬럼 정의, 제약조건 코드표, JOIN 다이어그램, SQL 예시
+
+### 리뷰 결과
+- 1차: NEEDS_IMPROVEMENT (CRITICAL 3건)
+  1. 인코딩 오류 (app.py:749 `Ã×` → `x`) — 수정 완료
+  2. JOIN 패턴에 CASE 키 누락 → rev_id=999, case_det_id 추가 완료
+  3. MOVE_CASE_ITEM PK 오기술 (emp_id 단독) → 복합PK 명시 완료
+  + WARNING: move_item_detail PK 누락 → 수정 완료
+- 수정 후 배포: HTTP 200 정상 확인
+
+### #106 완료: Few-shot Oracle SQL 예시 추가
+- text2sql_pipeline.py SYSTEM_PROMPT에 6개 Few-shot 예시 추가
+- 패턴: 단순 집계, 권역 그룹핑, JOIN+rev_id=999+case_id, TO 비교, 감점 집계, 제외직원
+- 모든 예시에 HRAI_CON. 접두사, 한글 별칭, Oracle 문법 사용
+- 리뷰 결과: case_id 서브쿼리 누락 → 3개 예시에 MAX(case_id) 조건 추가
+- 최종 배포 완료
+
+### #104 완료: Example 쿼리 31개로 확장
+- app.py gr.Examples 10개 → 31개 확장 (7개 카테고리)
+- 카테고리: 직원통계(5), 조직분석(5), 배치결과(5), 제약조건(4), 이동기준(3), 비교분석(4), 기타(5)
+- 15개 테이블 모두 커버 (move_item_detail 예시 추가로 완전 커버)

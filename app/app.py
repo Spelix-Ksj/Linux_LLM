@@ -47,6 +47,153 @@ def _get_move_std_choices():
         return [("(DB 연결 실패)", "0")]
 
 
+def _get_move_std_stats(move_std_id):
+    """이동번호 선택 시 해당 이동의 핵심 통계를 조회하여 HTML로 반환"""
+    if not move_std_id or move_std_id == "0":
+        return ""
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid) AS emp_cnt,
+                        (SELECT COUNT(*) FROM HRAI_CON.move_org_master WHERE ftr_move_std_id = :mid) AS org_cnt,
+                        (SELECT COUNT(*) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = :mid) AS case_cnt,
+                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_move_yn = '1') AS must_move,
+                        (SELECT COUNT(*) FROM HRAI_CON.move_item_master WHERE ftr_move_std_id = :mid AND must_stay_yn = '1') AS must_stay
+                    FROM dual
+                """, {"mid": mid})
+                row = cur.fetchone()
+                if row:
+                    emp, org, case_cnt, must_move, must_stay = row
+                    return (
+                        f'<div style="display:flex;gap:16px;padding:6px 12px;background:#f0f4ff;'
+                        f'border-radius:8px;font-size:13px;color:#374151;align-items:center;flex-wrap:wrap;">'
+                        f'<span>👥 직원 <b>{emp:,}</b>명</span>'
+                        f'<span>🏢 사업소 <b>{org:,}</b>개</span>'
+                        f'<span>📋 케이스 <b>{case_cnt:,}</b>개</span>'
+                        f'<span>➡️ 필수이동 <b>{must_move:,}</b>명</span>'
+                        f'<span>⛔ 필수유보 <b>{must_stay:,}</b>명</span>'
+                        f'</div>'
+                    )
+        return ""
+    except Exception as e:
+        print(f"이동번호 통계 조회 실패: {e}")
+        return '<div style="padding:6px 12px;color:#ef4444;font-size:12px;">통계 조회 실패</div>'
+
+
+
+# ===== 제약조건 분석 함수 =====
+
+def _cnst_summary_html(move_std_id):
+    """제약조건 요약 테이블"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>'
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT c.cnst_cd, c.cnst_nm, c.cnst_gbn, c.use_yn, c.cnst_val, c.penalty_val,
+                           COUNT(DISTINCT c.org_id) AS org_cnt
+                    FROM HRAI_CON.MOVE_CASE_CNST_MASTER c
+                    WHERE c.ftr_move_std_id = :mid AND c.rev_id = 999
+                      AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    GROUP BY c.cnst_cd, c.cnst_nm, c.cnst_gbn, c.use_yn, c.cnst_val, c.penalty_val
+                    ORDER BY c.use_yn DESC, c.cnst_cd
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">제약조건 데이터 없음</div>'
+        df = pd.DataFrame(rows, columns=["제약코드", "제약조건명", "제약구분", "사용여부", "제약값", "패널티값", "적용사업소수"])
+        return _cnst_df_to_html(df, title="제약조건 요약", badge_col="사용여부")
+    except Exception as e:
+        print(f"제약조건 요약 조회 실패: {e}")
+        return f'<div style="padding:12px;color:#ef4444;">조회 오류</div>'
+
+
+def _penalty_top_html(move_std_id):
+    """감점 TOP 20"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>'
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT p.penalty_nm, SUM(p.vio_cnt) AS total_vio,
+                           MAX(p.penalty_val) AS unit_pen, SUM(p.opt_val) AS total_pen
+                    FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                      AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    GROUP BY p.penalty_nm
+                    ORDER BY SUM(p.opt_val) DESC
+                    FETCH FIRST 20 ROWS ONLY
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">감점 데이터 없음</div>'
+        df = pd.DataFrame(rows, columns=["감점항목명", "총위반건수", "건당감점값", "총감점합계"])
+        return _cnst_df_to_html(df, title="감점 TOP 20", rank_col=True)
+    except Exception as e:
+        print(f"감점 TOP 조회 실패: {e}")
+        return f'<div style="padding:12px;color:#ef4444;">조회 오류</div>'
+
+
+def _org_violation_html(move_std_id):
+    """사업소별 제약 위반 현황"""
+    if not move_std_id or move_std_id == "0":
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">이동번호를 선택하세요.</div>'
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        mid = int(move_std_id)
+        with oracledb.connect(user=DB_CONFIG["user"], password=DB_CONFIG["password"],
+                              dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT cn.org_nm AS org_name,
+                           COUNT(DISTINCT cn.cnst_cd) AS vio_cnst_cnt,
+                           SUM(p.vio_cnt) AS total_vio,
+                           SUM(p.opt_val) AS total_pen
+                    FROM HRAI_CON.MOVE_CASE_PENALTY_INFO p
+                    JOIN HRAI_CON.MOVE_CASE_CNST_MASTER cn
+                        ON p.ftr_move_std_id = cn.ftr_move_std_id
+                        AND p.case_id = cn.case_id AND p.case_det_id = cn.case_det_id
+                        AND p.rev_id = cn.rev_id AND cn.org_id IS NOT NULL
+                    WHERE p.ftr_move_std_id = :mid AND p.rev_id = 999 AND p.vio_cnt > 0
+                      AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.MOVE_CASE_MASTER WHERE ftr_move_std_id = :mid)
+                    GROUP BY cn.org_nm
+                    ORDER BY SUM(p.opt_val) DESC
+                    FETCH FIRST 30 ROWS ONLY
+                """, {"mid": mid})
+                rows = cur.fetchall()
+        if not rows:
+            return '<div style="padding:20px;text-align:center;color:#9ca3af;">위반 데이터 없음</div>'
+        df = pd.DataFrame(rows, columns=["사업소명", "위반제약수", "총위반건수", "총감점합계"])
+        return _cnst_df_to_html(df, title="사업소별 위반 현황 TOP 30", rank_col=True)
+    except Exception as e:
+        print(f"사업소별 위반 조회 실패: {e}")
+        return f'<div style="padding:12px;color:#ef4444;">조회 오류</div>'
+
+
+def _run_cnst_analysis(move_std_id):
+    """3개 분석을 실행하여 (summary, penalty, org) 반환"""
+    return _cnst_summary_html(move_std_id), _penalty_top_html(move_std_id), _org_violation_html(move_std_id)
+
 # ===== Google Fonts =====
 custom_head = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
 
@@ -560,29 +707,63 @@ function() {
 
 # ===== 스키마 정보 마크다운 =====
 schema_info_markdown = """
-## 데이터베이스 스키마 정보
+## 데이터베이스 스키마 정보 (HRAI_CON)
 
-### 테이블 요약
-| 테이블 | 건수 | 설명 |
-|--------|------|------|
-| MOVE_ITEM_MASTER | 31,025 | 직원 마스터 (인사정보) |
-| MOVE_CASE_ITEM | 148,029 | 배치안 상세 (케이스별 직원 배정) |
-| MOVE_CASE_CNST_MASTER | 1,082,117 | 제약조건 (조직별 규칙) |
-| MOVE_ORG_MASTER | 14,713 | 조직 마스터 (부서 정보) |
+> HDTP 정기인사 전환배치 최적화 시스템 — 15개 핵심 테이블
+
+### 조직 계층 구조 (5단계)
+```
+LVL1(본사) → LVL2(권역) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
+             A=서울  B=경기/인천  C=광역점  D=아울렛  E=기타
+```
+
+### 핵심 연결 키
+- **FTR_MOVE_STD_ID** (이동번호): 거의 모든 MOVE_* 테이블의 공통 조인 키
+- **REV_ID = 999**: 최종 확정 리비전 (조회 시 기본 필터)
 
 ---
 
-### 1. MOVE_ITEM_MASTER (직원 마스터)
+### 테이블 요약
+| 테이블 | 설명 | 주요 PK |
+|--------|------|--------|
+| FTR_MOVE_STD | 이동기준 마스터 | FTR_MOVE_STD_ID |
+| MOVE_ITEM_MASTER | 직원 마스터 (76컬럼) | FTR_MOVE_STD_ID + EMP_ID |
+| MOVE_ITEM_DETAIL | 발령정보 (메일 발송) | FTR_MOVE_STD_ID + EMP_NO |
+| MOVE_ORG_MASTER | 사업소/조직 마스터 | FTR_MOVE_STD_ID + ORG_ID |
+| MOVE_NETWORK_CHANGE | 사업소 변경정보 | FTR_MOVE_STD_ID + CHG_ID |
+| MOVE_CASE_MASTER | 배치 케이스 | FTR_MOVE_STD_ID + CASE_ID |
+| MOVE_CASE_DETAIL | 케이스 상세/리비전 | + CASE_DET_ID + REV_ID |
+| MOVE_CASE_ITEM | 배치 결과 (직원별) | + EMP_ID |
+| MOVE_CASE_ORG | 조직별 TO 설정 | + ORG_ID |
+| MOVE_CASE_CNST_MASTER | 제약조건 (48개 코드) | + ORG_ID + CNST_CD |
+| MOVE_CASE_PENALTY_INFO | 감점 상세 | + CNST_ID |
+| MOVE_JOBTYPE_PENALTY_MATRIX | 직무 호환성 매트릭스 | JOBTYPE_PROP |
+| MOVE_STAY_RULE | 필수유보 기준 | MOVE_STAY_RULE_ID |
+| MOVE_EMP_EXCLUSION | 동시배치불가 직원 | EMP_NO1 + EMP_NO2 |
+| ML_MAP_DICTIONARY | ML 직무분류 매핑 | DIC_ID |
+
+---
+
+### 1. FTR_MOVE_STD (이동기준 마스터)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
-| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (YYYYMM) |
+| ftr_move_std_id | 이동번호 | 이동기준 고유번호 (PK) |
+| std_nm | 기준명 | 이동기준 이름 |
+| base_ym | 기준년월 | YYYYMM 형식 |
+| base_ymd | 기준일자 | YYYYMMDD 형식 |
+| use_yn | 사용여부 | Y/N |
+
+### 2. MOVE_ITEM_MASTER (직원 마스터)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | 배치 기준 (PK) |
 | emp_id | 사원ID | 직원 고유번호 (PK) |
 | emp_no | 사원번호 | 사번 |
 | emp_nm | 이름 | 직원 성명 |
 | lvl1_nm ~ lvl5_nm | 조직계층 | 1~5단계 조직 계층명 |
 | org_nm | 현재조직 | 소속 부서명 |
 | prev_org_nm | 이전조직 | 직전 소속 부서명 |
-| job_type1/2/3 | 직종 | 직종 분류 |
+| job_type1/2/3 | 직종 | 직종 분류 (대/소/담당) |
 | pos_grd_nm | 직급 | 직급명 (대리, 과장 등) |
 | pos_grd_year | 직급년차 | 현 직급 근속 년수 |
 | gender_nm | 성별 | 남자/여자 |
@@ -597,14 +778,70 @@ schema_info_markdown = """
 | have_children | 자녀유무 | 자녀 유무 (1/0) |
 | labor_pos | 노조직책 | 노조 직책 |
 | addr | 주소 | 직원 주소 |
+| must_stay_yn | 필수유보 | 유보 여부 (1/0) |
+| must_move_yn | 필수이동 | 이동 여부 (1/0) |
 
-### 2. MOVE_CASE_ITEM (배치안 상세)
+### 3. MOVE_ITEM_DETAIL (발령정보)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
-| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
+| ftr_move_std_id | 이동번호 | PK |
+| emp_no | 사원번호 | 사번 (PK) |
+| org_type | 조직유형 | 조직 유형 (PK) |
+| send_yn | 발송여부 | 메일 발송 여부 |
+| send_date | 발송일자 | 메일 발송 일자 |
+
+### 4. MOVE_ORG_MASTER (사업소/조직 마스터)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| org_id | 조직ID | 조직 고유번호 (PK) |
+| parent_org_id | 상위조직ID | 상위 조직 ID |
+| org_cd | 조직코드 | 조직 코드 |
+| org_nm | 조직명 | 조직/부서명 |
+| org_type | 조직유형 | 조직 유형 분류 |
+| lvl1_nm ~ lvl5_nm | 조직계층 | 1~5단계 조직 계층명 |
+| full_path | 전체경로 | 조직 전체 경로 |
+| lvl | 레벨 | 조직 계층 레벨(단계) |
+| job_type1/2 | 직종 | 조직 직종 분류 |
+| tot_to | 정원 | 배정 정원(TO) |
+| region_type | 지역구분 | 조직 소재 지역 |
+| addr | 주소 | 조직 주소 |
+
+### 5. MOVE_NETWORK_CHANGE (사업소 변경정보)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| chg_id | 변경ID | 변경 고유번호 (PK) |
+| org_id | 조직ID | 대상 조직 |
+| before_org_nm | 변경전조직명 | 변경 전 이름 |
+| after_org_nm | 변경후조직명 | 변경 후 이름 |
+
+### 6. MOVE_CASE_MASTER (배치 케이스)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
 | case_id | 케이스ID | 배치안 번호 (PK) |
-| case_det_id | 상세ID | 배치안 상세 ID (PK) |
-| rev_id | 리비전ID | 수정 버전 (PK) |
+| case_nm | 케이스명 | 배치안 이름 |
+| case_desc | 설명 | 배치안 설명 |
+| confirm_yn | 확정여부 | 확정 여부 (Y/N) |
+
+### 7. MOVE_CASE_DETAIL (케이스 상세/리비전)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| case_id | 케이스ID | PK |
+| case_det_id | 상세ID | 시나리오 상세 ID (PK) |
+| rev_id | 리비전ID | 수정 버전 (PK, 999=최종) |
+| rev_nm | 리비전명 | 리비전 이름 |
+| opt_status | 최적화상태 | 최적화 실행 상태 |
+
+### 8. MOVE_CASE_ITEM (배치 결과 — 직원별)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| case_id | 케이스ID | PK |
+| case_det_id | 상세ID | PK |
+| rev_id | 리비전ID | PK (999=최종) |
 | emp_id | 사원ID | 직원 고유번호 (PK) |
 | new_org_id | 새조직ID | 이동 대상 조직 ID |
 | new_lvl1_nm ~ new_lvl5_nm | 새조직계층 | 이동 후 조직 계층 |
@@ -616,46 +853,110 @@ schema_info_markdown = """
 | fixed_yn | 확정여부 | 배치 확정 여부 (Y/N) |
 | cand_yn | 후보여부 | 이동 후보 여부 |
 
-### 3. MOVE_CASE_CNST_MASTER (제약조건)
+### 9. MOVE_CASE_ORG (조직별 TO 설정)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
-| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
-| case_id | 케이스ID | 배치안 번호 (PK) |
+| ftr_move_std_id | 이동번호 | PK |
+| case_id | 케이스ID | PK |
+| case_det_id | 상세ID | PK |
+| rev_id | 리비전ID | PK |
+| org_id | 조직ID | PK |
+| alg_tot_to | 배치가능인원 | 총 TO |
+| stay_cnt | 잔류인원 | 잔류 직원 수 |
+| move_in_cnt | 전입인원 | 전입 직원 수 |
+| move_out_cnt | 전출인원 | 전출 직원 수 |
+
+### 10. MOVE_CASE_CNST_MASTER (제약조건)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| case_id | 케이스ID | PK |
+| case_det_id | 상세ID | PK |
+| rev_id | 리비전ID | PK |
 | org_id | 조직ID | 대상 조직 ID (PK) |
 | org_nm | 조직명 | 대상 조직명 |
-| cnst_cd | 제약코드 | 제약 조건 코드 (PK) |
+| cnst_cd | 제약코드 | 제약 코드 (PK, TEAM001~048) |
 | cnst_nm | 제약조건명 | 제약 조건 이름 |
-| cnst_gbn | 제약구분 | 제약 조건 구분 (분류) |
-| apply_target | 적용대상 | 제약 조건 적용 대상 |
+| cnst_gbn | 제약구분 | 제약 조건 구분 |
+| apply_target | 적용대상 | 적용 대상 |
 | cnst_val | 제약값 | 제약 조건 수치 |
 | penalty_val | 패널티 | 위반 시 패널티 점수 |
 | use_yn | 사용여부 | 사용 여부 (Y/N) |
 | cnst_des | 설명 | 제약 조건 상세 설명 |
 
-### 4. MOVE_ORG_MASTER (조직 마스터)
+### 11. MOVE_CASE_PENALTY_INFO (감점 상세)
 | 컬럼명 | 한글명 | 설명 |
 |--------|--------|------|
-| ftr_move_std_id | 배치기준ID | 배치 기준 기간 (PK) |
-| org_id | 조직ID | 조직 고유번호 (PK) |
-| parent_org_id | 상위조직ID | 상위 조직 ID |
-| org_cd | 조직코드 | 조직 코드 |
-| org_nm | 조직명 | 조직/부서명 |
-| org_type | 조직유형 | 조직 유형 분류 |
-| lvl1_nm ~ lvl5_nm | 조직계층 | 1~5단계 조직 계층명 |
-| full_path | 전체경로 | 조직 전체 경로 |
-| lvl | 레벨 | 조직 계층 레벨(단계) |
-| job_type1/2 | 직종 | 조직 직종 분류 |
-| tot_to | 정원 | 배정 정원 |
-| region_type | 지역구분 | 조직 소재 지역 |
-| addr | 주소 | 조직 주소 |
+| ftr_move_std_id | 이동번호 | PK |
+| case_id / case_det_id / rev_id | 케이스 키 | PK |
+| cnst_id | 제약ID | 제약 고유 ID |
+| penalty_nm | 감점명 | 감점 항목명 |
+| vio_cnt | 위반건수 | 위반 건수 |
+| penalty_val | 감점값 | 건당 감점 |
+| opt_val | 최적화값 | 위반건수 x 감점값 |
+
+### 12. MOVE_JOBTYPE_PENALTY_MATRIX (직무 호환성 매트릭스)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| jobtype_prop | 직무속성 | 직무 분류 속성 |
+| 직무별 컬럼 | 감점값 | FROM → TO 직무 전환 시 감점 |
+
+### 13. MOVE_STAY_RULE (필수유보 기준)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| move_stay_rule_id | 기준ID | 규칙 고유번호 (PK) |
+| rule_nm | 규칙명 | 유보 규칙 이름 |
+| stay_mon | 유보개월 | 유보 기간(개월) |
+
+### 14. MOVE_EMP_EXCLUSION (동시배치불가 직원)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| ftr_move_std_id | 이동번호 | PK |
+| emp_no1 | 사번1 | 직원1 사번 (PK) |
+| emp_no2 | 사번2 | 직원2 사번 (PK) |
+| reason_type | 사유유형 | 부부/징계 등 (PK) |
+
+### 15. ML_MAP_DICTIONARY (ML 직무분류 매핑)
+| 컬럼명 | 한글명 | 설명 |
+|--------|--------|------|
+| dic_id | 사전ID | 매핑 고유번호 (PK) |
+| dic_type | 사전유형 | 매핑 유형 |
+| src_val | 원본값 | 원본 직무값 |
+| tgt_val | 매핑값 | 매핑된 직무값 |
+
+---
+
+### 주요 제약조건 코드 (TEAM001~048)
+| 코드 | 유형 | 설명 |
+|------|------|------|
+| TEAM001 | 필수 | TO(충원기준인원) 초과 불가 |
+| TEAM002 | 필수 | 필수이동 직원 반드시 이동 |
+| TEAM003 | 필수 | 미배치자 반드시 배치 |
+| TEAM004 | 필수 | 징계 가해자/피해자 동일사업소 금지 |
+| TEAM006 | 필수 | 부부 동일사업소 금지 |
+| TEAM007 | 감점 | 권역별 종합점수 평균 ±10% 균형 |
+| TEAM020 | 감점 | 사업소 이동비율 제약 (보통 40%) |
+| TEAM021 | 감점 | 남성직원 최소 1인 |
+| TEAM022 | 감점 | 팀 전원이동 금지 |
+| TEAM023 | 감점 | 동일팀→동일팀 이동 불가 |
+| TEAM033 | 필수 | 18개월 이내 이동 제한 |
+| TEAM035 | 필수 | 24개월 이내 이동 제한 |
+| TEAM048 | 감점 | 희망직무 배정 가점 |
 
 ---
 
 ### 테이블 관계 (JOIN 조건)
 ```
+┌──────────────┐                                     ┌──────────────────┐
+│ FTR_MOVE_STD │──(FTR_MOVE_STD_ID)──────────────────►  모든 MOVE_* 테이블 │
+│  (이동기준)    │                                     └──────────────────┘
+└──────────────┘
+
 ┌──────────────────┐     FTR_MOVE_STD_ID + EMP_ID     ┌──────────────────┐
 │ MOVE_ITEM_MASTER │◄────────────────────────────────►│  MOVE_CASE_ITEM  │
-│   (직원 마스터)    │                                   │  (배치안 상세)     │
+│   (직원 마스터)    │                                   │  (배치 결과)      │
 └──────────────────┘                                   └──────────────────┘
                                                               │
                            FTR_MOVE_STD_ID + CASE_ID          │ NEW_ORG_ID = ORG_ID
@@ -665,15 +966,22 @@ schema_info_markdown = """
 │MOVE_CASE_CNST_MASTER │◄────────────────────────────►│ MOVE_ORG_MASTER  │
 │   (제약조건)          │                               │  (조직 마스터)    │
 └──────────────────────┘                               └──────────────────┘
+
+┌──────────────────┐    CASE_ID + CASE_DET_ID + REV_ID  ┌──────────────────┐
+│ MOVE_CASE_MASTER │───────────────────────────────────►│ MOVE_CASE_DETAIL │
+│  (배치 케이스)     │                                    │  (리비전 관리)    │
+└──────────────────┘                                    └──────────────────┘
 ```
 
 ### JOIN SQL 예시
 | 조인 | SQL |
 |------|-----|
-| 직원 ↔ 배치안 | `m JOIN c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id` |
-| 배치안 ↔ 제약조건 | `c JOIN cn ON c.ftr_move_std_id = cn.ftr_move_std_id AND c.case_id = cn.case_id AND c.case_det_id = cn.case_det_id AND c.rev_id = cn.rev_id` |
+| 직원 ↔ 배치결과 | `m JOIN c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id` |
+| 배치결과 → 새조직 | `c JOIN o ON c.ftr_move_std_id = o.ftr_move_std_id AND c.new_org_id = o.org_id` |
 | 제약조건 ↔ 조직 | `cn JOIN o ON cn.ftr_move_std_id = o.ftr_move_std_id AND cn.org_id = o.org_id` |
-| 배치안 → 새조직 | `c JOIN o ON c.ftr_move_std_id = o.ftr_move_std_id AND c.new_org_id = o.org_id` |
+| 직원 → 발령정보 | `m JOIN d ON m.ftr_move_std_id = d.ftr_move_std_id AND m.emp_no = d.emp_no` |
+| 케이스 → 상세 | `cm JOIN cd ON cm.ftr_move_std_id = cd.ftr_move_std_id AND cm.case_id = cd.case_id` |
+| 배치결과 → 감점 | `ci JOIN p ON ci.ftr_move_std_id = p.ftr_move_std_id AND ci.case_id = p.case_id` |
 """
 
 
@@ -810,6 +1118,56 @@ def _df_to_html(df):
     return html
 
 
+
+def _cnst_df_to_html(df, title="", badge_col=None, rank_col=False):
+    """제약조건 분석 전용 HTML 테이블 렌더러"""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return '<div style="padding:20px;text-align:center;color:#9ca3af;">데이터 없음</div>'
+    header = ""
+    if title:
+        header = (f'<div style="padding:10px 16px 8px;font-weight:700;font-size:14px;'
+                  f'color:#374151;border-bottom:2px solid #667eea20;">{title}'
+                  f'<span style="margin-left:8px;font-size:12px;font-weight:400;color:#9ca3af;">({len(df)}건)</span></div>')
+    html = f'<div style="border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.04);">{header}'
+    if len(df) > 25:
+        html += '<div style="max-height:420px;overflow:auto;">'
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    html += '<thead style="position:sticky;top:0;z-index:1;"><tr>'
+    if rank_col:
+        html += '<th style="background:#f8fafc;padding:9px 10px;text-align:center;font-weight:600;color:#6b7280;border-bottom:2px solid #e5e7eb;width:36px;">#</th>'
+    for col in df.columns:
+        html += f'<th style="background:#f8fafc;padding:9px 14px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #e5e7eb;white-space:nowrap;">{col}</th>'
+    html += '</tr></thead><tbody>'
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = '#ffffff' if i % 2 == 0 else '#f9fafb'
+        html += f'<tr style="background:{bg};">'
+        if rank_col:
+            rc = "#667eea" if i < 3 else "#9ca3af"
+            html += f'<td style="padding:8px 10px;text-align:center;color:{rc};font-weight:700;border-bottom:1px solid #f1f5f9;">{i+1}</td>'
+        for col in df.columns:
+            val = row[col]
+            import html as _html
+            cell = '' if pd.isna(val) else _html.escape(str(val))
+            style = "padding:8px 14px;border-bottom:1px solid #f1f5f9;color:#111827;"
+            if col == badge_col:
+                if cell == 'Y':
+                    cell = '<span style="background:#10b98120;color:#10b981;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">Y</span>'
+                else:
+                    cell = '<span style="background:#9ca3af20;color:#9ca3af;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">N</span>'
+            elif isinstance(val, (int, float)) and not pd.isna(val):
+                try:
+                    cell = f'{int(val):,}' if float(val) == int(float(val)) else f'{float(val):,.2f}'
+                except (ValueError, OverflowError):
+                    pass
+                style += "text-align:right;font-variant-numeric:tabular-nums;"
+            html += f'<td style="{style}">{cell}</td>'
+        html += '</tr>'
+    html += '</tbody></table>'
+    if len(df) > 25:
+        html += '</div>'
+    html += '</div>'
+    return html
+
 # ===== 모델 상태 텍스트 빌더 =====
 def _build_model_status(model_key):
     """선택된 모델의 상태 정보를 평문 텍스트로 반환"""
@@ -943,19 +1301,47 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                 render=False,
             )
 
-            # 예시 질문 (at top of tab)
+            # 예시 질문 (at top of tab) — 30개, 15개 테이블 커버
             gr.Examples(
                 examples=[
+                    # 직원 통계
                     ["전체 직원 수는 몇 명이야?"],
                     ["남자, 여자 인원 수를 알려줘"],
                     ["직급별 인원 수를 보여줘"],
-                    ["부서별 평균 근무개월을 알려줘"],
                     ["30대 직원 목록을 보여줘"],
-                    ["3년 이상 근무한 직원은 누구야?"],
-                    ["지역별 직급 분포를 보여줘"],
-                    ["최근 이동 대상자의 이름과 새 부서를 알려줘"],
-                    ["최근 배치기준으로 부서별 정원과 현재 인원을 비교해줘"],
-                    ["부서 이동이 확정된 직원 목록을 보여줘"],
+                    ["근무 기간이 가장 긴 직원 TOP 10을 알려줘"],
+                    # 조직 분석
+                    ["권역별 직원 수를 보여줘"],
+                    ["사업소별 정원(TO)과 현재 인원을 비교해줘"],
+                    ["A권역(서울) 사업소 목록과 각 인원 수를 알려줘"],
+                    ["팀별 평균 근무개월을 보여줘"],
+                    ["조직 레벨별 사업소 수를 알려줘"],
+                    # 배치 결과
+                    ["이동이 확정된 직원의 이름과 새 부서를 보여줘"],
+                    ["필수이동 대상 직원 목록을 알려줘"],
+                    ["잔류 확정된 직원 수를 부서별로 보여줘"],
+                    ["전출 인원이 가장 많은 사업소 TOP 5"],
+                    ["전입 인원이 0인 사업소 목록을 보여줘"],
+                    # 제약조건 & 감점
+                    ["사용 중인 제약조건 목록을 보여줘"],
+                    ["위반 건수가 가장 많은 제약조건 TOP 10"],
+                    ["부부 동시배치 불가 직원 목록을 알려줘"],
+                    ["총 감점이 높은 사업소 TOP 10을 보여줘"],
+                    # 이동기준 & 케이스
+                    ["전체 이동기준(이동번호) 목록을 보여줘"],
+                    ["최근 이동번호의 케이스 목록을 알려줘"],
+                    ["확정된 케이스의 리비전 목록을 보여줘"],
+                    # 비교 분석
+                    ["직무전환(job_type 변경) 직원 목록을 보여줘"],
+                    ["기혼 여성 직원의 권역별 분포를 알려줘"],
+                    ["자기신청이동 직원의 이동 결과를 보여줘"],
+                    ["5년 이상 근무자의 직급별 분포를 알려줘"],
+                    # 기타 (유보, 매핑, 변경)
+                    ["필수유보 기준 목록과 유보 개월을 보여줘"],
+                    ["직무 호환성 매트릭스를 보여줘"],
+                    ["조직 변경(개편) 이력을 알려줘"],
+                    ["ML 직무분류 매핑 사전을 보여줘"],
+                    ["발령 메일이 발송된 직원 목록을 보여줘"],
                 ],
                 inputs=question_input,
             )
@@ -997,6 +1383,9 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                     min_width=120,
                     elem_classes=["primary-btn"],
                 )
+
+            # 이동번호 통계 (auto-update on dropdown change)
+            move_std_stats = gr.HTML(value=_get_move_std_stats(_move_choices[0][1] if _move_choices else "0"))
 
             # Generated SQL
             sql_output = gr.Textbox(
@@ -1053,6 +1442,34 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
         with gr.Tab("스키마 정보", elem_classes=["schema-tab"]):
             gr.Markdown(schema_info_markdown)
 
+
+        # ===== 탭 4: 제약조건 분석 =====
+        with gr.Tab("제약조건 분석"):
+            gr.HTML("""
+            <div style="background:linear-gradient(135deg,#667eea10,#764ba220);
+                        border-left:4px solid #667eea;border-radius:0 10px 10px 0;
+                        padding:10px 16px;margin-bottom:16px;font-size:13px;color:#374151;">
+                선택한 이동번호의 제약조건 설정 현황, 감점 순위, 사업소별 위반 현황을 분석합니다.
+            </div>
+            """)
+            with gr.Row(equal_height=True):
+                cnst_move_dropdown = gr.Dropdown(
+                    show_label=False,
+                    choices=_move_choices,
+                    value=_move_choices[0][1] if _move_choices else "0",
+                    scale=2, min_width=200, container=False,
+                )
+                cnst_analyze_btn = gr.Button("분석 실행", variant="primary", scale=0, min_width=120)
+            gr.Markdown("**제약조건 요약**")
+            cnst_summary_output = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("**감점 TOP 20**")
+                    cnst_penalty_output = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    gr.Markdown("**사업소별 위반 현황**")
+                    cnst_org_output = gr.HTML(value="")
+
     # Footer
     gr.HTML("""
     <div style="text-align:center;padding:20px 0 8px 0;color:#9ca3af;font-size:12px;border-top:1px solid #e5e7eb;margin-top:24px;">
@@ -1075,6 +1492,13 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
         fn=_refresh_models,
         inputs=[],
         outputs=[model_dropdown, model_status],
+    )
+
+    # 이동번호 변경 시 통계 자동 업데이트
+    move_std_dropdown.change(
+        fn=_get_move_std_stats,
+        inputs=[move_std_dropdown],
+        outputs=[move_std_stats],
     )
 
     # SQL 생성 (버튼 클릭)
@@ -1121,6 +1545,15 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
         inputs=[],
         outputs=[history_output, history_sqls_state, history_sql_display],
     )
+
+    # 제약조건 분석 실행
+    cnst_analyze_btn.click(
+        fn=_run_cnst_analysis,
+        inputs=[cnst_move_dropdown],
+        outputs=[cnst_summary_output, cnst_penalty_output, cnst_org_output],
+        concurrency_limit=3,
+    )
+
 
 
 # 서버 시작
