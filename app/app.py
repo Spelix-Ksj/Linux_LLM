@@ -5,6 +5,7 @@ HR Text2SQL Dashboard — Premium SaaS-style UI
 """
 import os
 import datetime
+import re
 import tempfile
 import threading
 
@@ -14,6 +15,36 @@ import pandas as pd
 from text2sql_pipeline import generate_sql, execute_sql, generate_report
 from config import GRADIO_HOST, GRADIO_PORT, DEFAULT_MODEL_KEY, MODEL_REGISTRY, TARGET_TABLES
 from model_registry import get_display_choices, get_available_models
+
+
+def _get_move_std_choices():
+    """DB에서 이동번호 목록을 조회하여 Dropdown choices 반환"""
+    try:
+        import oracledb
+        from config import DB_CONFIG
+        with oracledb.connect(
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            dsn=oracledb.makedsn(DB_CONFIG["host"], DB_CONFIG["port"], sid=DB_CONFIG["sid"])
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT FTR_MOVE_STD_ID, STD_NM
+                    FROM HRAI_CON.FTR_MOVE_STD
+                    ORDER BY FTR_MOVE_STD_ID DESC
+                """)
+                choices = []
+                for row in cur.fetchall():
+                    ftr_id = int(row[0]) if row[0] is not None else 0
+                    std_nm = row[1] or str(ftr_id)
+                    label = f"{ftr_id} - {std_nm}"
+                    choices.append((label, str(ftr_id)))
+        if not choices:
+            choices = [("(이동번호 없음)", "0")]
+        return choices
+    except Exception as e:
+        print(f"이동번호 조회 실패: {e}")
+        return [("(DB 연결 실패)", "0")]
 
 
 # ===== Google Fonts =====
@@ -805,15 +836,21 @@ def _on_model_change(model_key):
 
 
 # ===== SQL 생성 (실행하지 않음) =====
-def process_generate(question: str, model_key: str, progress=gr.Progress()):
+def process_generate(question: str, model_key: str, move_std_id: str, progress=gr.Progress()):
     """SQL만 생성 (실행하지 않음)"""
     if not question or not question.strip():
         return "", "질문을 입력해주세요.", ""
     if model_key not in MODEL_REGISTRY:
         model_key = DEFAULT_MODEL_KEY
 
+    # 이동번호 조건을 질문에 추가
+    enhanced_question = question.strip()
+    if move_std_id and move_std_id != "0":
+        if re.fullmatch(r'\d{1,10}', move_std_id):
+            enhanced_question = f"[이동번호(FTR_MOVE_STD_ID)={move_std_id} 조건 필수] {enhanced_question}"
+
     progress(0.3, desc="SQL 생성 중...")
-    result = generate_sql(question.strip(), model_key=model_key)
+    result = generate_sql(enhanced_question, model_key=model_key)
     progress(1.0, desc="완료")
 
     if result["error"]:
@@ -941,8 +978,17 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
                 )
                 refresh_btn = gr.Button("🔄", size="sm", scale=0, min_width=50)
 
-            # Row 2: Question input (true single line — no labels)
+            # Row 2: Move ID + Question input + Generate button (single line)
+            _move_choices = _get_move_std_choices()
             with gr.Row(equal_height=True):
+                move_std_dropdown = gr.Dropdown(
+                    show_label=False,
+                    choices=_move_choices,
+                    value=_move_choices[0][1] if _move_choices else "0",
+                    scale=1,
+                    min_width=160,
+                    container=False,
+                )
                 question_input.render()
                 generate_btn = gr.Button(
                     "SQL 생성",
@@ -1034,7 +1080,7 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
     # SQL 생성 (버튼 클릭)
     generate_btn.click(
         fn=process_generate,
-        inputs=[question_input, model_dropdown],
+        inputs=[question_input, model_dropdown, move_std_dropdown],
         outputs=[sql_output, status_output, reasoning_state],
         concurrency_limit=3,
     )
@@ -1042,7 +1088,7 @@ with gr.Blocks(title="HR Text2SQL Dashboard") as demo:
     # SQL 생성 (Enter 키 제출)
     question_input.submit(
         fn=process_generate,
-        inputs=[question_input, model_dropdown],
+        inputs=[question_input, model_dropdown, move_std_dropdown],
         outputs=[sql_output, status_output, reasoning_state],
         concurrency_limit=3,
     )

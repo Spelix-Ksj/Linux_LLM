@@ -347,3 +347,30 @@
   5. ITEM_MASTER ↔ ORG_MASTER: FTR_MOVE_STD_ID + org_nm matching
 - 변경 파일: app.py (schema_info_markdown + Examples), text2sql_pipeline.py (SYSTEM_PROMPT)
 - Review: NEEDS_IMPROVEMENT → Fix 완료 (누락 컬럼 추가, CNST↔ORG 예제 추가)
+
+## [2026-02-25] 미션: 이동번호 Combobox 추가
+
+### 원본 요청
+- SQL 생성 왼쪽에 이동번호 선택 Combobox 추가
+- FTR_MOVE_STD_ID = 거의 모든 테이블의 키 필드
+- FTR_MOVE_STD 테이블에서 존재하는 이동번호만 Combo List로 표시
+
+### 변경 내용
+1. **app.py**:
+   - `_get_move_std_choices()`: FTR_MOVE_STD 테이블에서 ID/이름 목록 조회 → Dropdown choices
+   - Row 2에 move_std_dropdown 추가 (SQL 생성 버튼 왼쪽)
+   - `process_generate(question, model_key, move_std_id)`: 이동번호 조건을 질문에 자동 prepend
+   - 새로고침 버튼이 move_std_dropdown도 함께 갱신
+2. **text2sql_pipeline.py**:
+   - SYSTEM_PROMPT Rule 10: FTR_MOVE_STD_ID 조건 자동 적용 지시
+
+### 리뷰 이력
+- 1차 리뷰: NEEDS_IMPROVEMENT (커넥션 리크, 입력 검증 누락)
+- 수정사항:
+  1. `_get_move_std_choices()`: `with oracledb.connect(...) as conn:` + `with conn.cursor() as cur:` 이중 컨텍스트 매니저
+  2. `process_generate()`: `re.fullmatch(r'\d{1,10}', move_std_id)` 숫자 검증 추가
+  3. dead code 제거 (`label` 조건 분기)
+- 2차 리뷰: **PASS** (이전 2건 수정 확인, 추가 CRITICAL 없음)
+
+### 배포
+- SCP 배포 → text2sql-ui 서비스 재시작 → HTTP 200 정상 확인

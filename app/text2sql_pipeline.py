@@ -101,7 +101,8 @@ SYSTEM_PROMPT = f"""당신은 Oracle SQL 전문가입니다.
 6. SQL만 출력하세요. 설명은 생략하세요.
 7. 출력 컬럼에 한글 별칭(AS "한글명")을 붙이세요 (테이블 설명의 한글명 참조, SELECT *는 별칭 불필요). 예: COUNT(*) AS "인원수", org_nm AS "부서명"
 8. 질문이 여러 테이블의 정보를 필요로 하면 적절한 JOIN을 사용하세요. 예: 직원+조직 → HRAI_CON.move_item_master m JOIN HRAI_CON.move_org_master o ON m.org_nm = o.org_nm
-9. 단일 테이블로 충분하면 JOIN하지 마세요 (예: 직급별 인원수는 move_item_master만). 다른 테이블의 고유 컬럼이 필요할 때만 JOIN하세요."""
+9. 단일 테이블로 충분하면 JOIN하지 마세요 (예: 직급별 인원수는 move_item_master만). 다른 테이블의 고유 컬럼이 필요할 때만 JOIN하세요.
+10. 질문에 [이동번호(FTR_MOVE_STD_ID)=NNNNNN 조건 필수]가 포함된 경우, 모든 테이블의 WHERE절에 FTR_MOVE_STD_ID = NNNNNN 조건을 반드시 포함하세요."""
 
 
 def _clean_sql(raw_sql: str) -> str:
