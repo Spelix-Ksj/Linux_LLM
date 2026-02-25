@@ -88,7 +88,7 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 - 조직계층: LVL1(본사) → LVL2(권역 A~E) → LVL3(사업소) → LVL4(팀) → LVL5(파트)
   - 권역: A=서울, B=경기/인천, C=광역점, D=아울렛, E=기타
 - FTR_MOVE_STD_ID: 이동번호 — 거의 모든 MOVE_* 테이블의 공통 조인 키 (물리적 FK 없음)
-- REV_ID: 리비전 ID (VARCHAR2 타입). '999'는 최종 확정 리비전이나, 데이터가 없을 수 있으므로 명시적 요청이 없으면 REV_ID 조건을 생략하세요.
+- REV_ID='999': 최종 확정 리비전 (VARCHAR2 타입). CASE 계열 테이블은 여러 리비전이 존재하므로 REV_ID = '999' 조건 없이 조회하면 중복 행이 발생합니다. 반드시 문자열 '999'로 비교하세요.
 
 ## 테이블 스키마 정보
 {_table_info}
@@ -122,8 +122,8 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 ### ML 매핑
 - ml_map_dictionary: ML 직무분류 매핑 (dic_id=사전ID, src_val=원본값, tgt_val=매핑값, dic_type=사전유형)
 
-## 주요 JOIN 패턴 (CASE 계열 테이블은 case_id 조건 포함, rev_id는 규칙 11 참고)
-- 직원+배치결과: move_item_master m JOIN move_case_item c ON m.ftr_move_std_id=c.ftr_move_std_id AND m.emp_id=c.emp_id
+## 주요 JOIN 패턴 (CASE 계열 테이블은 반드시 case_id + rev_id='999' 조건 포함)
+- 직원+배치결과: move_item_master m JOIN move_case_item c ON m.ftr_move_std_id=c.ftr_move_std_id AND m.emp_id=c.emp_id AND c.rev_id='999'
 - 배치결과→새조직: move_case_item c JOIN move_org_master o ON c.ftr_move_std_id=o.ftr_move_std_id AND c.new_org_id=o.org_id
 - 제약조건+조직: move_case_cnst_master cn JOIN move_org_master o ON cn.ftr_move_std_id=o.ftr_move_std_id AND cn.org_id=o.org_id
 - 배치결과+감점: move_case_item ci JOIN move_case_penalty_info p ON ci.ftr_move_std_id=p.ftr_move_std_id AND ci.case_id=p.case_id AND ci.case_det_id=p.case_det_id AND ci.rev_id=p.rev_id
@@ -140,7 +140,7 @@ HDTP는 현대백화점 직원 정기인사이동 배치를 최적화하는 시�
 8. 질문이 여러 테이블의 정보를 필요로 하면 적절한 JOIN을 사용하세요. JOIN 시 반드시 FTR_MOVE_STD_ID 조건을 맞추세요.
 9. 단일 테이블로 충분하면 JOIN하지 마세요. 다른 테이블의 고유 컬럼이 필요할 때만 JOIN하세요.
 10. 질문에 [이동번호(FTR_MOVE_STD_ID)=NNNNNN 조건 필수]가 포함된 경우, 모든 테이블의 WHERE절에 FTR_MOVE_STD_ID = NNNNNN 조건을 반드시 포함하세요.
-11. REV_ID는 VARCHAR2 타입입니다. 사용자가 '최종 확정' 또는 '확정 리비전'을 명시적으로 요청한 경우에만 REV_ID = '999' 조건을 추가하세요. 그 외에는 REV_ID 조건을 생략하세요.
+11. CASE 계열 테이블(move_case_item, move_case_detail, move_case_org, move_case_cnst_master, move_case_penalty_info) 조회 시 REV_ID = '999' (VARCHAR2, 문자열 비교) 조건을 반드시 추가하세요. 이 조건이 없으면 여러 리비전의 중복 행이 반환됩니다.
 12. 조직 계층 분석 시 LVL1~5_NM 컬럼과 권역 분류(A~E)를 활용하세요.
 13. 수치 컬럼으로 정렬(ORDER BY)하거나 집계(SUM/AVG/MAX/MIN)할 때, 해당 컬럼에 NULL이 있을 수 있으므로 WHERE절에 IS NOT NULL 조건을 추가하세요. 예: ORDER BY org_work_mon DESC → WHERE org_work_mon IS NOT NULL ORDER BY org_work_mon DESC
 
@@ -177,7 +177,8 @@ SQL:
 SELECT m.emp_nm AS "이름", m.pos_grd_nm AS "직급", m.org_nm AS "현재부서", c.new_lvl3_nm AS "새부서"
 FROM HRAI_CON.move_item_master m
 JOIN HRAI_CON.move_case_item c ON m.ftr_move_std_id = c.ftr_move_std_id AND m.emp_id = c.emp_id
-WHERE c.new_org_id IS NOT NULL
+WHERE c.rev_id = '999'
+  AND c.new_org_id IS NOT NULL
   AND c.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = m.ftr_move_std_id)
   AND m.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
 FETCH FIRST 50 ROWS ONLY
@@ -193,6 +194,7 @@ LEFT JOIN HRAI_CON.move_case_item ci
     AND co.case_det_id = ci.case_det_id AND co.rev_id = ci.rev_id
     AND co.org_id = ci.new_org_id
 WHERE co.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
+  AND co.rev_id = '999'
   AND co.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = co.ftr_move_std_id)
 GROUP BY co.org_nm, co.tot_to
 ORDER BY (co.tot_to - COUNT(ci.emp_id)) DESC
@@ -201,7 +203,8 @@ ORDER BY (co.tot_to - COUNT(ci.emp_id)) DESC
 SQL:
 SELECT p.cnst_nm AS "제약조건", SUM(p.penalty_cnt) AS "총위반건수", SUM(p.penalty_sum) AS "총감점"
 FROM HRAI_CON.move_case_penalty_info p
-WHERE p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = p.ftr_move_std_id)
+WHERE p.rev_id = '999'
+  AND p.case_id = (SELECT MAX(case_id) FROM HRAI_CON.move_case_master WHERE ftr_move_std_id = p.ftr_move_std_id)
   AND p.ftr_move_std_id = (SELECT MAX(ftr_move_std_id) FROM HRAI_CON.ftr_move_std)
 GROUP BY p.cnst_nm
 ORDER BY SUM(p.penalty_cnt) DESC
