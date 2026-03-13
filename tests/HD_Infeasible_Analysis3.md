@@ -16,9 +16,6 @@
 
 ---
 
-****<img width="1920" height="1032" alt="image" src="https://github.com/user-attachments/assets/39817d48-a098-4d53-afae-85fdffb57174" />
-
-
 ## 목차
 
 1. [개요](#1-개요)
@@ -435,4 +432,5 @@ COMMIT;
 *본 보고서는 대외비이며, 허가 없이 외부 배포를 금합니다.*
 
 *— 끝 —*
+
 
