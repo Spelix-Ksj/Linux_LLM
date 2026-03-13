@@ -11,8 +11,6 @@
 
 ---
 
-<img width="1920" height="1032" alt="image" src="https://github.com/user-attachments/assets/75cdc3c9-93ad-4392-9531-f2d17c672e43" />
-
 
 ## 목차
 
@@ -508,5 +506,6 @@ COMMIT;
 ---
 
 *본 보고서는 HDTP 전환배치 최적화 시스템의 코드, DB 데이터, LP 파일을 종합 분석하여 작성되었습니다.*
+
 
 
