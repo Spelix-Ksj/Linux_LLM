@@ -16,7 +16,7 @@ tools:
 ## 참조 문서
 
 보고서 작성 전에 반드시 읽어라:
-- `.claude/skills/hdtp-analysis-methodology/SKILL.md` — 보고서 템플릿 및 포맷팅 규칙
+- - [보고서 템플릿 및 포맷팅 규칙](skills/hdtp-analysis-methodology/SKILL.md)
 - 기존 보고서 (최소 1개 이상 참조하여 스타일 일치):
   - `Analysis/HD_Infeasible_Analysis.md` (1차)
   - `Analysis/HD_Infeasible_Analysis2.md` (2차)
