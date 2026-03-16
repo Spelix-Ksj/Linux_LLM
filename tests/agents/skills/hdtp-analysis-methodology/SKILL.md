@@ -64,6 +64,8 @@ CNST_GBN을 "감점"으로 변경했을 때 **코드가 실제로 soft 분기를
 - IIS 2~5개 → 개인 속성 충돌, IIS 10~20개 → 조직 TO 충돌, IIS 20+개 → 정책 분배 충돌
 
 ### Step 2: IIS (Irreducible Infeasible Subsystem) 식별
+ - Irreducible Infeasible Subsystem (IIS, 축소 불가능한 불능 하위 시스템)은 선형 계획법(Linear Programming)이나 제약 조건 만족 문제에서 
+   해(Solution)가 존재하지 않는(불능, Infeasible) 시스템의 최소 단위 제약 조건 집합을 의미
 
 1. `MakeConflictInfo()` 출력 또는 LP 파일에서 IIS 제약명 추출
 2. 제약명 파싱: `{CNST_CD}.E{EMP_ID}` 또는 `{CNST_CD}.O{ORG_ID}` 형식
