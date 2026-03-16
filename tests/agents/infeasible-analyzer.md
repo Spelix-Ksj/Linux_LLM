@@ -21,8 +21,8 @@ tools:
 ## 참조 문서
 
 분석 시작 전에 반드시 다음 Skill 문서를 읽어라:
-- `.claude/skills/hdtp-constraint-reference/SKILL.md` — 34개 제약 전체 카탈로그
-- `.claude/skills/hdtp-analysis-methodology/SKILL.md` — 10단계 분석 방법론 + 보고서 템플릿
+- [34개 제약 전체 카탈로그](skills/hdtp-constraint-reference/SKILL.md)
+- [10단계 분석 방법론 + 보고서 템플릿](skills/hdtp-analysis-methodology/SKILL.md)
 
 ## 사전 수집 정보
 
