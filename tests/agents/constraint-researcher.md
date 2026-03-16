@@ -20,7 +20,7 @@ tools:
 ## 참조 문서
 
 조사 시작 전에 반드시 읽어라:
-- `.claude/skills/hdtp-constraint-reference/SKILL.md` — 제약 카탈로그 (코드 위치, 수학식 등)
+- `skills/hdtp-constraint-reference/SKILL.md` — 제약 카탈로그 (코드 위치, 수학식 등)
 
 ## 조사 절차
 
