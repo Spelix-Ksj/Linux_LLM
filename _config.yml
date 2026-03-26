@@ -1,19 +1,5 @@
-remote_theme: just-the-docs/just-the-docs@v0.10.0
+remote_theme: pages-themes/cayman@v0.2.0
 plugins:
   - jekyll-remote-theme
 
 title: Linux LLM Docs
-description: 분석 문서 모음
-
-# 네비게이션 자동 생성
-nav_enabled: false
-
-# 불필요한 UI 제거
-search_enabled: false
-
-markdown: kramdown
-highlighter: rouge
-kramdown:
-  syntax_highlighter: rouge
-  syntax_highlighter_opts:
-    css_class: 'highlight'
