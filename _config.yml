@@ -10,3 +10,10 @@ nav_enabled: false
 
 # 불필요한 UI 제거
 search_enabled: false
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
