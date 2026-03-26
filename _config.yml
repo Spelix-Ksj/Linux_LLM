@@ -1,6 +1,3 @@
-theme: minima
-
-minima:
-  skin: classic
-
-header_pages:
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+  - jekyll-remote-theme
