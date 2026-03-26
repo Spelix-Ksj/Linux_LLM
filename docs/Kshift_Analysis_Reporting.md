@@ -1,5 +1,7 @@
 ---
-layout: minimal
+layout: default
+title: ILOG/CPLEX 비교 분석 리포팅
+nav_order: 1
 ---
 
 # ILOG/CPLEX 최적화 리포팅 기능 비교 분석 및 적용 방안 
