@@ -10,3 +10,5 @@ nav_enabled: true
 
 # 불필요한 UI 제거
 search_enabled: false
+
+color_scheme: dark
