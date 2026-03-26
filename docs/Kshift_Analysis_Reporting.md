@@ -1,5 +1,5 @@
 ---
-layout: default
+layout: minimal
 ---
 
 # ILOG/CPLEX 최적화 리포팅 기능 비교 분석 및 적용 방안
