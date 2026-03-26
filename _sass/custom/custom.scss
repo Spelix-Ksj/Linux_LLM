@@ -3,46 +3,62 @@ table {
   border-collapse: collapse;
   width: 100%;
   margin: 1.5rem 0;
+  font-size: 0.9em;
 }
 
 thead tr {
-  background-color: #2c3e50;
+  background-color: #3b5bdb;
   color: #ffffff;
+  font-weight: bold;
+}
+
+thead th {
+  padding: 10px 14px;
+  border: 1px solid #3b5bdb;
+  text-align: left;
 }
 
 tbody tr:nth-child(even) {
-  background-color: #f0f4f8;
+  background-color: #f5f7fa;
 }
 
 tbody tr:hover {
-  background-color: #dce8f5;
+  background-color: #e8edf5;
 }
 
-td, th {
-  border: 1px solid #c8d8e8;
-  padding: 10px 14px;
+td {
+  border: 1px solid #dee2e6;
+  padding: 8px 14px;
 }
 
-// 코드블록 스타일
-div.highlighter-rouge,
+// 코드블록
 div.highlight {
-  background-color: #1e1e2e;
+  background-color: #282c34 !important;
+  border: none;
   border-radius: 6px;
   padding: 1rem;
   margin: 1rem 0;
 }
 
-code.language-csharp,
+pre.highlight {
+  background-color: #282c34 !important;
+  border: none;
+  margin: 0;
+}
+
 pre code {
-  color: #cdd6f4;
-  font-size: 0.88em;
+  color: #abb2bf;
+  font-size: 0.87em;
+  background: none;
+  padding: 0;
 }
 
 // 인라인 코드
-code {
-  background-color: #e8edf2;
-  color: #c0392b;
+p code, li code, td code {
+  background-color: #eef0f3;
+  color: #e74c3c;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 0.9em;
+  font-size: 0.88em;
+  border: none;
 }
