@@ -6,9 +6,7 @@ title: Linux LLM Docs
 description: 분석 문서 모음
 
 # 네비게이션 자동 생성
-nav_enabled: true
+nav_enabled: false
 
 # 불필요한 UI 제거
 search_enabled: false
-
-color_scheme: dark
