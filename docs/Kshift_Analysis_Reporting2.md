@@ -373,6 +373,6 @@ ORDER BY R.PROJECT_NO;
 
 ---
 
-작성일: 2026-03-29
+작성일: 2026-03-26
 분석 도구: CPLEX Conflict Refinement, LP Model Analysis, Oracle DB Query
 분석 대상: ALIS ScmMasterPlanManager (BlockFactoryManager)
