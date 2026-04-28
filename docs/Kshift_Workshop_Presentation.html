@@ -1,0 +1,2317 @@
+<!doctype html>
+<html lang="ko" class="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>왜 해가 없을까? — KSHIFT 최적화 Infeasibility 원인 규명과 해결 전략</title>
+<style>
+/* =========================================================
+   Reset / base
+   ========================================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow-x: hidden; background: var(--bg); color: var(--fg); }
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+body {
+  font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "tnum";
+}
+
+/* =========================================================
+   Theme tokens — dark default
+   ========================================================= */
+/* Default browser font-size 16px → 24px (150%) so the deck renders at 150% out of the box.
+   All slide tokens use clamp()/vw/vh so 16:9 viewport-fit is preserved.
+   Toggle back to 100% with Z key (see script). */
+html { font-size: 24px; }
+
+:root {
+  --bg: #0a0e14;
+  --bg-elev: #11161f;
+  --bg-card: #161c28;
+  /* Brightened dark-mode text for WCAG AA 4.5:1+ contrast on --bg #0a0e14 */
+  --fg: #f5f5f8;
+  --fg-dim: #b8b8c4;
+  --fg-muted: #8a92a2;
+  --line: #232a37;
+  --line-strong: #2f384a;
+
+  --warn: #ff6b35;   /* problem / hard */
+  --ok:   #2ec4b6;   /* solution / soft */
+  --ana:  #9b5de5;   /* analysis / insight */
+  --warn-soft: rgba(255,107,53,.14);
+  --ok-soft:   rgba(46,196,182,.14);
+  --ana-soft:  rgba(155,93,229,.14);
+
+  --title-size: clamp(2rem, 4.6vw, 3.6rem);
+  --h2-size:    clamp(1.4rem, 2.8vw, 2.2rem);
+  --h3-size:    clamp(1.05rem, 1.9vw, 1.35rem);
+  --body-size:  clamp(0.85rem, 1.15vw, 1.05rem);
+  --small-size: clamp(0.7rem, 0.85vw, 0.85rem);
+  --tiny-size:  clamp(0.62rem, 0.75vw, 0.78rem);
+
+  --slide-pad-x: clamp(2rem, 5vw, 4.5rem);
+  --slide-pad-y: clamp(1.4rem, 3.4vw, 2.6rem);
+  --gap-1: clamp(0.35rem, 0.7vw, 0.6rem);
+  --gap-2: clamp(0.55rem, 1.1vw, 1rem);
+  --gap-3: clamp(0.9rem, 1.8vw, 1.5rem);
+  --gap-4: clamp(1.4rem, 2.6vw, 2.2rem);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 28px rgba(0,0,0,.35);
+}
+:root.light {
+  --bg: #f6f7fb;
+  --bg-elev: #ffffff;
+  --bg-card: #ffffff;
+  --fg: #181d27;
+  --fg-dim: #4f5868;
+  --fg-muted: #868e9c;
+  --line: #e4e7ee;
+  --line-strong: #c8cdd8;
+  --warn-soft: rgba(255,107,53,.10);
+  --ok-soft:   rgba(46,196,182,.10);
+  --ana-soft:  rgba(155,93,229,.10);
+  --shadow: 0 6px 20px rgba(20,30,55,.08);
+}
+
+/* =========================================================
+   Slide framework
+   ========================================================= */
+.slide {
+  width: 100vw; height: 100vh; height: 100dvh;
+  overflow: hidden; scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  position: relative;
+  padding: var(--slide-pad-y) var(--slide-pad-x);
+  isolation: isolate;
+}
+.slide::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -2;
+  background:
+    radial-gradient(60% 40% at 8% 12%, rgba(155,93,229,.08), transparent 60%),
+    radial-gradient(40% 50% at 92% 88%, rgba(46,196,182,.07), transparent 60%);
+}
+.slide::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -1; opacity: .35;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 0%, transparent 75%);
+}
+.slide-head {
+  display: flex; align-items: baseline; gap: var(--gap-3);
+  padding-bottom: var(--gap-2); margin-bottom: var(--gap-3);
+  border-bottom: 1px solid var(--line);
+}
+.eyebrow {
+  font-size: var(--small-size); font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ana);
+  display: inline-flex; align-items: center; gap: .5em;
+}
+.eyebrow::before {
+  content: ""; width: 28px; height: 2px; background: var(--ana); display: inline-block;
+}
+.slide h1 {
+  font-size: var(--title-size); font-weight: 800; line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.slide h2 {
+  font-size: var(--h2-size); font-weight: 750; letter-spacing: -0.01em; line-height: 1.15;
+}
+.slide h3 {
+  font-size: var(--h3-size); font-weight: 700; letter-spacing: -0.005em;
+}
+.slide p, .slide li { font-size: var(--body-size); line-height: 1.55; color: var(--fg-dim); }
+.slide strong { color: var(--fg); font-weight: 700; }
+.slide code, .mono {
+  font-family: "JetBrains Mono", "Fira Code", "Consolas", "D2Coding", monospace;
+  font-size: 0.92em;
+}
+
+/* slide number, footer */
+.slide-foot {
+  position: absolute; bottom: clamp(.7rem, 1.6vw, 1.4rem);
+  left: var(--slide-pad-x); right: var(--slide-pad-x);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: var(--tiny-size); color: var(--fg-muted); letter-spacing: .08em;
+}
+.slide-num { font-family: "JetBrains Mono", monospace; font-weight: 600; }
+.slide-num em { color: var(--warn); font-style: normal; }
+
+/* utility chips/cards */
+.chip {
+  display: inline-flex; align-items: center; gap: .4em;
+  padding: .35em .8em; border-radius: 999px;
+  font-size: var(--small-size); font-weight: 600;
+  background: var(--bg-card); border: 1px solid var(--line);
+  color: var(--fg-dim);
+}
+.chip.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.chip.ok   { color: var(--ok);   border-color: var(--ok);   background: var(--ok-soft); }
+.chip.ana  { color: var(--ana);  border-color: var(--ana);  background: var(--ana-soft); }
+
+.card {
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--gap-3);
+  box-shadow: var(--shadow);
+}
+.card.accent-warn { border-color: var(--warn); }
+.card.accent-ok   { border-color: var(--ok); }
+.card.accent-ana  { border-color: var(--ana); }
+.card .card-eyebrow {
+  font-size: var(--small-size); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg-muted);
+  margin-bottom: var(--gap-1);
+}
+.card .card-title { font-size: var(--h3-size); font-weight: 700; margin-bottom: var(--gap-1); color: var(--fg); }
+
+.kbd {
+  display: inline-block; padding: .15em .55em; border-radius: 6px;
+  font-family: "JetBrains Mono", monospace; font-size: .8em;
+  background: var(--bg-elev); border: 1px solid var(--line-strong);
+  color: var(--fg-dim); vertical-align: middle;
+}
+
+/* layouts */
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-3); align-content: start; }
+.cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-3); align-content: start; }
+.cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-2); align-content: start; }
+.stack  { display: flex; flex-direction: column; gap: var(--gap-2); }
+.row    { display: flex; gap: var(--gap-2); align-items: center; flex-wrap: wrap; }
+.grow   { flex: 1; }
+.center-flex { display: flex; flex-direction: column; justify-content: center; flex: 1; min-height: 0; }
+
+/* tables */
+table.compare {
+  width: 100%; border-collapse: collapse; font-size: var(--small-size);
+  background: var(--bg-card); border-radius: var(--radius-sm); overflow: hidden;
+  box-shadow: var(--shadow);
+}
+table.compare th, table.compare td {
+  padding: .55em .8em; text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+table.compare th {
+  background: var(--bg-elev); color: var(--fg);
+  font-weight: 700; letter-spacing: .03em;
+  font-size: var(--tiny-size); text-transform: uppercase;
+}
+table.compare tr:last-child td { border-bottom: none; }
+table.compare td.center, table.compare th.center { text-align: center; }
+table.compare .gap-warn { color: var(--warn); font-weight: 700; }
+table.compare .gap-ok   { color: var(--ok);   font-weight: 700; }
+table.compare .gap-ana  { color: var(--ana);  font-weight: 700; }
+
+/* progress + chrome */
+.progress {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+  background: linear-gradient(90deg, var(--ana), var(--ok), var(--warn));
+  z-index: 100; transition: width .3s ease;
+}
+.chrome {
+  position: fixed; top: clamp(.6rem, 1.2vw, 1rem); right: clamp(.6rem, 1.2vw, 1rem);
+  display: flex; gap: .4rem; z-index: 50;
+}
+.chrome button {
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line-strong);
+  background: var(--bg-elev); color: var(--fg-dim); font-size: 16px;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  transition: all .2s ease;
+}
+.chrome button:hover { color: var(--fg); border-color: var(--ana); }
+.chrome button[aria-pressed="true"] { color: var(--ok); border-color: var(--ok); }
+.kbd-hint {
+  position: fixed; bottom: clamp(.5rem, 1vw, .8rem); left: 50%; transform: translateX(-50%);
+  display: flex; gap: .5em; align-items: center;
+  font-size: var(--tiny-size); color: var(--fg-muted); z-index: 40;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  padding: .35em .8em; border-radius: 999px;
+  backdrop-filter: blur(8px); border: 1px solid var(--line);
+}
+
+/* index overlay */
+.overlay {
+  position: fixed; inset: 0; background: rgba(8,11,16,.85); z-index: 200;
+  display: none; padding: clamp(1rem, 4vw, 3rem); overflow-y: auto;
+  backdrop-filter: blur(10px);
+}
+.overlay.open { display: block; }
+.overlay-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--gap-2); max-width: 1400px; margin: 0 auto;
+}
+.overlay-card {
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--gap-2); cursor: pointer;
+  transition: all .2s ease;
+}
+.overlay-card:hover { border-color: var(--ana); transform: translateY(-2px); }
+.overlay-card .num { font-family: "JetBrains Mono", monospace; font-size: var(--tiny-size); color: var(--ana); font-weight: 700; }
+.overlay-card .title { font-size: var(--small-size); font-weight: 600; color: var(--fg); margin-top: .3em; line-height: 1.3; }
+
+/* notes */
+.notes {
+  position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+  width: min(820px, 90vw); max-height: 30vh; overflow-y: auto;
+  background: color-mix(in srgb, var(--bg-elev) 96%, transparent);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  padding: var(--gap-2) var(--gap-3); box-shadow: var(--shadow);
+  font-size: var(--small-size); color: var(--fg-dim); z-index: 60;
+  display: none; backdrop-filter: blur(12px);
+}
+.notes.open { display: block; }
+.notes::before {
+  content: "발표자 노트"; display: block;
+  font-size: var(--tiny-size); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ana); margin-bottom: .4em;
+}
+
+/* =========================================================
+   Slide-specific visualisations
+   ========================================================= */
+
+/* S1 Title */
+.title-slide { justify-content: center; }
+.title-slide .pre {
+  font-size: var(--small-size); font-weight: 700; letter-spacing: .3em;
+  color: var(--warn); margin-bottom: var(--gap-3);
+}
+.title-slide h1 {
+  font-size: clamp(2.6rem, 7vw, 5.6rem); line-height: .95; letter-spacing: -0.03em;
+  margin-bottom: var(--gap-3);
+}
+.title-slide h1 em {
+  font-style: normal;
+  background: linear-gradient(135deg, var(--warn), var(--ana) 60%, var(--ok));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.title-slide .subtitle {
+  font-size: var(--h3-size); color: var(--fg-dim); max-width: 800px;
+  margin-bottom: var(--gap-4);
+}
+.title-meta {
+  display: flex; gap: var(--gap-3); flex-wrap: wrap;
+  font-size: var(--small-size); color: var(--fg-muted);
+}
+.title-meta strong { color: var(--fg); font-weight: 700; }
+
+.title-bg {
+  position: absolute; top: 50%; right: -10vw; transform: translateY(-50%);
+  width: 65vmin; height: 65vmin; pointer-events: none; z-index: -1; opacity: .55;
+}
+.title-bg .ring {
+  position: absolute; inset: 0; border: 1.5px solid var(--ana);
+  border-radius: 50%; opacity: .35;
+}
+.title-bg .ring:nth-child(2) { inset: 8%; border-color: var(--ok); }
+.title-bg .ring:nth-child(3) { inset: 16%; border-color: var(--warn); }
+.title-bg .ring:nth-child(4) { inset: 24%; border-color: var(--ana); }
+.title-bg .core {
+  position: absolute; inset: 32%; border-radius: 50%;
+  background: radial-gradient(circle, var(--warn) 0%, transparent 70%);
+  filter: blur(20px); opacity: .6;
+}
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+.title-bg .ring { animation: ring-spin linear infinite; }
+.title-bg .ring:nth-child(1) { animation-duration: 60s; }
+.title-bg .ring:nth-child(2) { animation-duration: 80s; animation-direction: reverse; }
+.title-bg .ring:nth-child(3) { animation-duration: 100s; }
+.title-bg .ring:nth-child(4) { animation-duration: 120s; animation-direction: reverse; }
+@media (prefers-reduced-motion: reduce) {
+  .title-bg .ring { animation: none; }
+}
+
+/* S3 questions */
+.q-card {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-3); position: relative; overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.q-card .qnum {
+  font-family: "JetBrains Mono", monospace;
+  font-size: clamp(2.4rem, 5vw, 4rem); font-weight: 800;
+  line-height: 1; color: var(--fg);
+  -webkit-text-stroke: 1px var(--ana);
+  -webkit-text-fill-color: transparent;
+  margin-bottom: var(--gap-2);
+}
+.q-card.q1 .qnum { -webkit-text-stroke-color: var(--ana); }
+.q-card.q2 .qnum { -webkit-text-stroke-color: var(--warn); }
+.q-card.q3 .qnum { -webkit-text-stroke-color: var(--ok); }
+.q-card .q-title { font-size: var(--h3-size); font-weight: 700; color: var(--fg); margin-bottom: var(--gap-1); }
+.q-card .q-desc  { font-size: var(--small-size); color: var(--fg-muted); }
+
+/* S4 flow */
+.flow {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
+  gap: var(--gap-1); align-items: stretch;
+  width: 100%;
+}
+.flow-step {
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--gap-1) var(--gap-1);
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center; gap: .3em; min-height: 0; min-width: 0;
+}
+.flow-step .icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--ana-soft); color: var(--ana);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-family: "JetBrains Mono", monospace;
+  flex-shrink: 0;
+}
+.flow-step.solver .icon { background: var(--warn-soft); color: var(--warn); }
+.flow-step.success .icon { background: var(--ok-soft); color: var(--ok); }
+.flow-step .label { font-size: var(--tiny-size); font-weight: 700; color: var(--fg); }
+.flow-step .sub { font-size: var(--tiny-size); color: var(--fg-muted); }
+.flow-arrow {
+  align-self: center; color: var(--fg-muted); font-size: 1.2em;
+  display: flex; align-items: center; justify-content: center;
+}
+.flow-branch { font-size: var(--tiny-size); color: var(--fg-muted); padding: 0 .3em; }
+
+/* S6/S7 strength cards */
+.strength-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-2); }
+.strength {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-2); display: flex; flex-direction: column; gap: .4em;
+}
+.strength .glyph {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+}
+.strength.tp .glyph { background: var(--ok-soft); color: var(--ok); }
+.strength.al .glyph { background: var(--ana-soft); color: var(--ana); }
+.strength .name { font-weight: 700; color: var(--fg); font-size: var(--small-size); }
+.strength .desc { font-size: var(--tiny-size); color: var(--fg-muted); line-height: 1.4; }
+
+/* S8 priorities */
+.prio-list { display: flex; flex-direction: column; gap: var(--gap-2); }
+.prio-item {
+  display: grid; grid-template-columns: 80px 1fr 130px; gap: var(--gap-2); align-items: center;
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-2);
+}
+.prio-tag {
+  font-family: "JetBrains Mono", monospace; font-weight: 800;
+  text-align: center; padding: .4em .5em; border-radius: var(--radius-sm);
+  font-size: var(--small-size); letter-spacing: .05em;
+}
+.prio-item.p1 .prio-tag { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
+.prio-item.p2 .prio-tag { background: var(--ok-soft);   color: var(--ok);   border: 1px solid var(--ok); }
+.prio-item.p3 .prio-tag { background: var(--ana-soft);  color: var(--ana);  border: 1px solid var(--ana); }
+.prio-item.p4 .prio-tag { background: var(--bg-elev);   color: var(--fg-dim); border: 1px solid var(--line-strong); }
+.prio-item .prio-title { font-weight: 700; color: var(--fg); font-size: var(--h3-size); }
+.prio-item .prio-desc { font-size: var(--small-size); color: var(--fg-muted); }
+.prio-eta {
+  font-family: "JetBrains Mono", monospace; font-size: var(--small-size);
+  color: var(--fg-dim); text-align: right;
+}
+
+/* S9 problem screen */
+.error-frame {
+  background: linear-gradient(135deg, var(--warn-soft), transparent 70%),
+              var(--bg-card);
+  border: 2px solid var(--warn); border-radius: var(--radius);
+  padding: var(--gap-3); position: relative;
+}
+.error-frame::before {
+  content: "ERROR"; position: absolute; top: -12px; left: var(--gap-2);
+  background: var(--warn); color: white; padding: 2px 10px; border-radius: 4px;
+  font-size: var(--tiny-size); font-weight: 800; letter-spacing: .2em;
+}
+.error-msg { font-family: "JetBrains Mono", monospace; font-size: var(--h3-size); color: var(--warn); font-weight: 700; }
+.error-trace {
+  font-family: "JetBrains Mono", monospace; font-size: var(--small-size);
+  color: var(--fg-dim); margin-top: var(--gap-1);
+  background: var(--bg); padding: var(--gap-2); border-radius: var(--radius-sm);
+  border-left: 3px solid var(--warn);
+  white-space: pre-wrap; line-height: 1.6;
+}
+.kpi {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-2);
+}
+.kpi-tile {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-2); text-align: center;
+}
+.kpi-tile .v {
+  font-family: "JetBrains Mono", monospace; font-weight: 800;
+  font-size: clamp(1.6rem, 3.4vw, 2.6rem); color: var(--warn); line-height: 1;
+}
+.kpi-tile .l {
+  font-size: var(--tiny-size); color: var(--fg-muted);
+  margin-top: .4em; letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* S10 conflict 11 boxes */
+.conflict-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap-1);
+}
+.cf-box {
+  background: var(--bg-card); border: 1.5px solid var(--warn);
+  border-radius: var(--radius-sm); padding: .5em .4em;
+  text-align: center; font-family: "JetBrains Mono", monospace;
+  font-size: var(--tiny-size); color: var(--warn); line-height: 1.2;
+}
+.cf-box.scd000 { border-color: var(--ana); color: var(--ana); background: var(--ana-soft); }
+.cf-box.scd002 { background: var(--warn-soft); }
+.cf-box .code { font-weight: 800; font-size: .9em; display: block; }
+.cf-box .det  { color: var(--fg-muted); font-size: .82em; display: block; margin-top: .15em; }
+
+/* S11 hypotheses */
+.hyp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-3); }
+.hyp {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-3); position: relative; overflow: hidden;
+}
+.hyp::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--ana);
+}
+.hyp h3 { color: var(--fg); margin-bottom: var(--gap-1); }
+.hyp .mono-hint {
+  font-family: "JetBrains Mono", monospace; font-size: var(--tiny-size);
+  color: var(--fg-muted); margin-bottom: var(--gap-1);
+}
+.hyp .verdict {
+  margin-top: var(--gap-2); padding: .5em .8em;
+  background: var(--bg-elev); border-radius: var(--radius-sm);
+  font-size: var(--small-size); font-weight: 700;
+  display: inline-flex; gap: .4em; align-items: center;
+}
+.hyp .verdict.miss { color: var(--warn); }
+.hyp .verdict.partial { color: var(--ana); }
+
+/* S12 LP file analysis */
+.lp-block {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-left: 3px solid var(--ana);
+  border-radius: var(--radius-sm); padding: var(--gap-2);
+  font-family: "JetBrains Mono", monospace; font-size: var(--small-size);
+  line-height: 1.55; white-space: pre-wrap; overflow: hidden;
+}
+.lp-block .key { color: var(--ana); font-weight: 700; }
+.lp-block .num { color: var(--ok); }
+.lp-block .miss { color: var(--warn); font-weight: 700; }
+
+/* S13 equation box */
+.eq {
+  background: var(--bg-elev); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: var(--gap-3);
+  font-family: "JetBrains Mono", monospace;
+  font-size: clamp(1rem, 1.7vw, 1.4rem); line-height: 1.8;
+  text-align: center; color: var(--fg);
+}
+.eq .lhs { color: var(--warn); font-weight: 800; }
+.eq .rhs { color: var(--ok); font-weight: 800; }
+.eq .op  { color: var(--ana); font-weight: 800; padding: 0 .3em; }
+.eq .verdict {
+  margin-top: var(--gap-2); padding-top: var(--gap-2);
+  border-top: 1px dashed var(--line-strong);
+  font-family: "Pretendard", sans-serif; font-size: var(--body-size);
+  color: var(--warn); font-weight: 700;
+}
+
+/* S14 hard vs soft */
+.dual {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--gap-3); align-items: stretch;
+}
+.dual .vs {
+  font-family: "JetBrains Mono", monospace; font-weight: 800;
+  font-size: clamp(1.2rem, 2.5vw, 2rem);
+  color: var(--ana); align-self: center; padding: 0 var(--gap-1);
+}
+.dual-card {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-3); display: flex; flex-direction: column; gap: var(--gap-1);
+}
+.dual-card.hard { border-color: var(--warn); }
+.dual-card.soft { border-color: var(--ok); }
+.dual-card .label { font-size: var(--small-size); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.dual-card.hard .label { color: var(--warn); }
+.dual-card.soft .label { color: var(--ok); }
+.dual-card .src { font-size: var(--tiny-size); color: var(--fg-muted); }
+.dual-card .body { font-size: var(--body-size); color: var(--fg-dim); line-height: 1.55; }
+.dual-card .quote {
+  font-family: "JetBrains Mono", monospace; font-size: var(--tiny-size);
+  background: var(--bg-elev); padding: .5em .7em; border-radius: var(--radius-sm);
+  color: var(--fg);
+}
+
+/* S15 bar chart */
+.bar-wrap { display: flex; flex-direction: column; gap: .55em; }
+.bar-row { display: grid; grid-template-columns: 90px 1fr 80px; gap: .8em; align-items: center; }
+.bar-name { font-family: "JetBrains Mono", monospace; font-size: var(--small-size); color: var(--fg); font-weight: 700; }
+.bar-track {
+  height: 22px; background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: 6px; overflow: hidden; position: relative;
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ana), var(--warn));
+  border-radius: 5px;
+  transition: width .8s ease;
+}
+.bar-fill.crit { background: linear-gradient(90deg, var(--warn), #ff3a3a); }
+.bar-num {
+  font-family: "JetBrains Mono", monospace; font-size: var(--small-size);
+  color: var(--warn); font-weight: 700; text-align: right;
+}
+
+/* S16-19 solution roadmap */
+.sol-card {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-3); display: flex; flex-direction: column; gap: var(--gap-1);
+  position: relative; overflow: hidden;
+}
+.sol-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--ok);
+}
+.sol-card.warn::before { background: var(--warn); }
+.sol-card.ana::before  { background: var(--ana); }
+.sol-card .num {
+  font-family: "JetBrains Mono", monospace; font-weight: 800;
+  font-size: var(--h2-size); line-height: 1; color: var(--ok);
+}
+.sol-card.warn .num { color: var(--warn); }
+.sol-card.ana .num  { color: var(--ana); }
+.sol-card .ttl { font-size: var(--h3-size); font-weight: 700; color: var(--fg); }
+.sol-card .desc { font-size: var(--body-size); color: var(--fg-dim); line-height: 1.55; }
+.sol-card .meta {
+  margin-top: auto; padding-top: var(--gap-1);
+  display: flex; gap: var(--gap-1); flex-wrap: wrap;
+}
+
+/* S18-19 gantt-like roadmap */
+.gantt { display: flex; flex-direction: column; gap: .55em; }
+.gantt-row {
+  display: grid; grid-template-columns: 130px 1fr; gap: .8em; align-items: center;
+}
+.gantt-label { font-size: var(--small-size); color: var(--fg); font-weight: 600; }
+.gantt-bar {
+  height: 26px; background: var(--bg-card); border-radius: 6px;
+  position: relative; border: 1px solid var(--line); overflow: hidden;
+}
+.gantt-bar .seg {
+  position: absolute; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--tiny-size); font-weight: 700; color: white;
+  border-radius: 5px;
+}
+.gantt-bar .seg.warn { background: linear-gradient(90deg, var(--warn), #e5562a); }
+.gantt-bar .seg.ok   { background: linear-gradient(90deg, var(--ok), #1f9e93); }
+.gantt-bar .seg.ana  { background: linear-gradient(90deg, var(--ana), #7c44d1); }
+.gantt-axis {
+  display: grid; grid-template-columns: 130px 1fr; gap: .8em; margin-top: .2em;
+  font-family: "JetBrains Mono", monospace; font-size: var(--tiny-size); color: var(--fg-muted);
+}
+.gantt-axis .ticks { display: grid; grid-template-columns: repeat(8, 1fr); }
+
+/* S20-22 reporting mocks */
+.mock {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-2); display: flex; flex-direction: column; gap: var(--gap-1);
+  box-shadow: var(--shadow);
+}
+.mock .mock-head {
+  display: flex; gap: .5em; align-items: center;
+  padding-bottom: .4em; border-bottom: 1px solid var(--line);
+  font-size: var(--tiny-size); color: var(--fg-muted); letter-spacing: .1em; text-transform: uppercase;
+}
+.mock .mock-head::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+}
+.mock-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-1); }
+.mock-summary .stat {
+  padding: .55em; background: var(--bg-elev); border-radius: var(--radius-sm); text-align: center;
+}
+.mock-summary .stat .v { font-family: "JetBrains Mono", monospace; font-weight: 800; font-size: var(--h3-size); color: var(--ok); }
+.mock-summary .stat.warn .v { color: var(--warn); }
+.mock-summary .stat.ana .v { color: var(--ana); }
+.mock-summary .stat .l { font-size: 9px; color: var(--fg-muted); letter-spacing: .1em; text-transform: uppercase; margin-top: .2em; }
+
+.mock-table { width: 100%; border-collapse: collapse; font-size: var(--tiny-size); }
+.mock-table th, .mock-table td {
+  padding: .35em .55em; text-align: left; border-bottom: 1px solid var(--line);
+  font-family: "JetBrains Mono", monospace;
+}
+.mock-table th { background: var(--bg-elev); color: var(--fg-dim); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.mock-table .delta-pos { color: var(--warn); font-weight: 700; }
+.mock-table .delta-neg { color: var(--ok); font-weight: 700; }
+
+.pivot-grid {
+  display: grid; grid-template-columns: 90px repeat(5, 1fr); gap: 2px;
+  font-family: "JetBrains Mono", monospace; font-size: var(--tiny-size);
+}
+.pivot-grid > div {
+  padding: .4em; background: var(--bg-elev);
+  display: flex; align-items: center; justify-content: center;
+}
+.pivot-grid .ph { background: var(--bg-card); color: var(--fg-dim); font-weight: 700; }
+.pivot-grid .v { color: var(--fg); }
+.pivot-grid .v.a { background: linear-gradient(90deg, var(--ana-soft), transparent); color: var(--ana); }
+.pivot-grid .v.b { background: linear-gradient(90deg, var(--ok-soft), transparent); color: var(--ok); }
+.pivot-grid .v.c { background: linear-gradient(90deg, var(--warn-soft), transparent); color: var(--warn); }
+
+/* S23 CLI integration */
+.arch {
+  display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: var(--gap-1); align-items: stretch;
+}
+.arch-box {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-2); display: flex; flex-direction: column; gap: .3em; text-align: center;
+  font-size: var(--small-size);
+}
+.arch-box .ttl { font-weight: 700; color: var(--fg); }
+.arch-box .sub { font-size: var(--tiny-size); color: var(--fg-muted); }
+.arch-box .glyph {
+  font-size: 1.5rem; margin: 0 auto .2em;
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.arch-box.wpf .glyph { background: var(--ana-soft); color: var(--ana); }
+.arch-box.svc .glyph { background: var(--ok-soft); color: var(--ok); }
+.arch-box.cli .glyph { background: var(--warn-soft); color: var(--warn); }
+.arch-arrow { align-self: center; color: var(--fg-muted); font-family: "JetBrains Mono", monospace; }
+
+/* S25 closing */
+.close-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap-3); }
+.close-step {
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--gap-3); position: relative;
+}
+.close-step .step-num {
+  position: absolute; top: -14px; left: var(--gap-2);
+  font-family: "JetBrains Mono", monospace; font-weight: 800;
+  background: var(--bg); padding: 0 .6em; color: var(--ana);
+  font-size: var(--small-size);
+}
+.close-step .step-ttl { font-weight: 800; color: var(--fg); margin-bottom: .4em; font-size: var(--h3-size); }
+.close-step .step-desc { font-size: var(--small-size); color: var(--fg-muted); }
+.close-step.warn { border-color: var(--warn); }
+.close-step.warn .step-num { color: var(--warn); }
+.close-step.ok { border-color: var(--ok); }
+.close-step.ok .step-num { color: var(--ok); }
+
+.close-cta {
+  margin-top: var(--gap-3); padding: var(--gap-2) var(--gap-3);
+  background: var(--bg-elev); border-left: 3px solid var(--ok);
+  border-radius: var(--radius-sm);
+  font-size: var(--body-size); color: var(--fg);
+}
+.close-cta strong { color: var(--ok); }
+
+/* responsive */
+@media (max-height: 720px) {
+  .slide { padding: clamp(1rem, 2.4vw, 1.6rem) clamp(1.4rem, 3.6vw, 2.4rem); }
+}
+@media (max-height: 600px) {
+  .kbd-hint { display: none; }
+  .strength { padding: .55em; }
+  .sol-card { padding: .8em; }
+}
+@media (max-width: 800px) {
+  .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; }
+  .strength-grid { grid-template-columns: 1fr 1fr; }
+  .conflict-grid { grid-template-columns: repeat(3, 1fr); }
+  .dual { grid-template-columns: 1fr; }
+  .dual .vs { display: none; }
+  .arch { grid-template-columns: 1fr; }
+  .arch-arrow { display: none; }
+}
+
+/* fullscreen first-gesture prompt */
+.fs-prompt {
+  position: fixed; inset: 0; z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(6px);
+  font-family: inherit; cursor: pointer;
+  animation: fsFade .35s ease;
+}
+.fs-prompt .fs-card {
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: clamp(1.2rem, 2.4vw, 2rem) clamp(1.6rem, 3.2vw, 2.6rem);
+  text-align: center; max-width: min(620px, 86vw);
+}
+.fs-prompt .fs-title {
+  font-size: var(--h3-size); font-weight: 700; letter-spacing: -0.01em;
+  color: var(--fg); margin-bottom: .5em;
+}
+.fs-prompt .fs-sub {
+  font-size: var(--small-size); color: var(--fg-dim); line-height: 1.5;
+}
+.fs-prompt .fs-sub .kbd {
+  font-family: "JetBrains Mono", monospace;
+  background: var(--bg-card); border: 1px solid var(--line);
+  border-radius: 4px; padding: .1em .45em; font-size: .9em;
+}
+@keyframes fsFade { from { opacity: 0; } to { opacity: 1; } }
+.fs-prompt.gone { animation: fsOut .25s ease forwards; pointer-events: none; }
+@keyframes fsOut { to { opacity: 0; transform: scale(.98); } }
+
+@media print {
+  .progress, .chrome, .kbd-hint, .notes, .overlay, .fs-prompt { display: none !important; }
+  .slide { page-break-after: always; }
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="chrome">
+  <button id="btn-theme"  title="라이트/다크 토글 (T)">◑</button>
+  <button id="btn-notes"  title="발표자 노트 (N)">≡</button>
+  <button id="btn-index"  title="슬라이드 인덱스 (ESC)">⌘</button>
+</div>
+
+<main>
+
+<!-- ============================================================
+     SLIDE 1 — Title
+     ============================================================ -->
+<section class="slide title-slide" id="slide-1"
+  data-notes="2026년 4월 워크샵에 오신 것을 환영합니다. 오늘은 KSHIFT 마스터 플랜 최적화에서 발생한 Infeasibility(해 없음) 문제를 가지고, 단순한 버그 수정이 아니라 설계와 구현 사이의 불일치를 어떻게 진단하고 복원하는지를 함께 짚어보려고 합니다.">
+  <div class="title-bg" aria-hidden="true">
+    <div class="ring"></div><div class="ring"></div><div class="ring"></div><div class="ring"></div>
+    <div class="core"></div>
+  </div>
+  <div class="pre">KSHIFT WORKSHOP · 2026-04-29</div>
+  <h1>왜 <em>해(解)</em>가 없을까?</h1>
+  <p class="subtitle">KSHIFT 최적화 Infeasibility 원인 규명과 해결 전략 — CPLEX, LP, 그리고 설계-구현 불일치</p>
+  <div class="title-meta">
+    <span><strong>발표자</strong> 박상훈</span>
+    <span><strong>발표일</strong> 2026-04-29 (수)</span>
+    <span><strong>워크샵</strong> ALIS Optimization Internals</span>
+  </div>
+  <div class="slide-foot">
+    <span>왜 해가 없을까? · KSHIFT Workshop</span>
+    <span class="slide-num"><em>01</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 2 — Background
+     ============================================================ -->
+<section class="slide" id="slide-2"
+  data-notes="우리가 이번 워크샵에서 다룰 두 시스템은 같은 CPLEX 엔진을 쓰지만, 도메인이 완전히 다릅니다. 분석 보고서 4건이 출발점입니다 — 리포팅 비교부터 LP 심층 분석, 그리고 Claude CLI 자동화 사례까지.">
+  <div class="slide-head">
+    <span class="eyebrow">Background</span>
+    <h2>같은 솔버, 다른 결과</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-2" style="margin-bottom: var(--gap-3);">
+      <div class="card accent-ana">
+        <div class="card-eyebrow">System A</div>
+        <div class="card-title">ALIS — 조선소 생산계획</div>
+        <p>83개 프로젝트의 블록 ACT(작업)를 8개 리소스(마킹·취부·용접·사상·도장·검사 등)에 일정 배정.<br>
+        <span class="mono" style="color: var(--fg-muted)">BlockFactoryManager / OptManager</span></p>
+      </div>
+      <div class="card accent-ok">
+        <div class="card-eyebrow">System B</div>
+        <div class="card-title">TPDemo — 인사 전환배치</div>
+        <p>직원을 조직 슬롯에 배정. ALIS와 동일한 ILP/MIP 패턴이지만 결과 리포팅 깊이가 한 단계 더 높음.<br>
+        <span class="mono" style="color: var(--fg-muted)">HDTPManager / TransferPlanManager</span></p>
+      </div>
+    </div>
+    <div class="cols-4">
+      <div class="card">
+        <div class="card-eyebrow">Source 1</div>
+        <div class="card-title" style="font-size: var(--small-size)">리포팅 비교 분석</div>
+        <p style="font-size: var(--tiny-size)">ALIS vs TPDemo 9개 항목 격차</p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">Source 2</div>
+        <div class="card-title" style="font-size: var(--small-size)">Infeasibility 1차 분석</div>
+        <p style="font-size: var(--tiny-size)">CPLEX 충돌 11건 / 가설 수립</p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">Source 3</div>
+        <div class="card-title" style="font-size: var(--small-size)">LP 심층 분석</div>
+        <p style="font-size: var(--tiny-size)">근본 원인 확정 / 해결안 도출</p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">Source 4</div>
+        <div class="card-title" style="font-size: var(--small-size)">Claude CLI 통합</div>
+        <p style="font-size: var(--tiny-size)">.NET WPF 자동화 사례</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Background · 분석 출발점</span>
+    <span class="slide-num"><em>02</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 3 — 3 questions
+     ============================================================ -->
+<section class="slide" id="slide-3"
+  data-notes="오늘의 발표는 이 세 질문에 답하기 위한 60분입니다. 첫 질문은 비교, 두 번째는 진단, 세 번째는 실행입니다. 이 순서대로 슬라이드를 따라가면 됩니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Today's Questions</span>
+    <h2>핵심 질문 3가지</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-3" style="height: 100%;">
+      <div class="q-card q1">
+        <div class="qnum">01</div>
+        <div class="q-title">ALIS와 TPDemo, 무엇이 다른가?</div>
+        <div class="q-desc">같은 CPLEX·같은 WPF·같은 BackgroundWorker 패턴.<br>그런데 사용자가 보는 결과 리포팅은 왜 두 단계 차이가 날까?</div>
+      </div>
+      <div class="q-card q2">
+        <div class="qnum">02</div>
+        <div class="q-title">해(解)가 없는 진짜 이유는?</div>
+        <div class="q-desc">durOffset이 좁아서? 선후행 역전?<br>1차 가설을 LP 파일이 어떻게 뒤집었는지 — 데이터로 보여드립니다.</div>
+      </div>
+      <div class="q-card q3">
+        <div class="qnum">03</div>
+        <div class="q-title">어떻게 해결할까?</div>
+        <div class="q-desc">설계-구현 불일치를 복원하는 순서.<br>즉시·단기·장기 로드맵으로 나눠 실행 가능한 액션을 제시합니다.</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Today's Questions</span>
+    <span class="slide-num"><em>03</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 4 — Common flow
+     ============================================================ -->
+<section class="slide" id="slide-4"
+  data-notes="두 시스템의 실행 흐름은 거의 동일합니다. 차이는 솔버 호출 후에 발생합니다 — MakeResult의 풍부함이 곧 사용자 경험의 차이입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 2 · Comparison</span>
+    <h2>공통 실행 흐름 — Solver 호출까지는 동일하다</h2>
+  </div>
+  <div class="center-flex">
+    <div class="flow">
+      <div class="flow-step"><div class="icon">1</div><div class="label">사용자 클릭</div><div class="sub">bOptimizeILOG</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">2</div><div class="label">BackgroundWorker</div><div class="sub">UI 비차단 실행</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">3</div><div class="label">MakeModel</div><div class="sub">변수·제약·목적함수</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step solver"><div class="icon">4</div><div class="label">CPLEX Solve</div><div class="sub">ExportModel(.lp)</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step success"><div class="icon">5</div><div class="label">Result</div><div class="sub">MakeResult / Conflict</div></div>
+    </div>
+    <div class="cols-2" style="margin-top: var(--gap-3);">
+      <div class="card accent-ana">
+        <div class="card-eyebrow">ALIS — 결과 처리</div>
+        <p><span class="mono">ScmMasterPlanManager.RunOptimization()</span> →
+        성공 시 <span class="mono">MakeResult()</span>, 실패 시 <span class="mono">MakeConflictInfo()</span>.</p>
+        <p style="margin-top:.4em;color:var(--fg-muted);font-size:var(--small-size)">
+        결과 메시지 1줄 + 단일 그리드 + 부하/간트/3D 차트 (도메인 강점)</p>
+      </div>
+      <div class="card accent-ok">
+        <div class="card-eyebrow">TPDemo — 결과 처리</div>
+        <p><span class="mono">TransferPlanManager.RunOptimization()</span> →
+        <span class="mono">MakeOptResult()</span> 파이프라인(3단계) + 다중 그리드 + 요약.</p>
+        <p style="margin-top:.4em;color:var(--fg-muted);font-size:var(--small-size)">
+        Before/After 분리 · 위배 건수 메시지 · GetConflictSummaryInfo()</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Common Flow · ALIS = TPDemo · BackgroundWorker → CPLEX</span>
+    <span class="slide-num"><em>04</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 5 — Comparison table (9 rows)
+     ============================================================ -->
+<section class="slide" id="slide-5"
+  data-notes="9가지 항목으로 보면 격차가 가장 두드러집니다. 빨간 GAP은 우리가 메워야 할 부분, 파란 EDGE는 우리만의 강점이라 유지해야 할 부분입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 2 · Feature-by-feature</span>
+    <h2>기능 격차 비교 — 9개 항목 한눈에</h2>
+  </div>
+  <div class="center-flex">
+    <table class="compare">
+      <thead>
+        <tr>
+          <th style="width:32%">기능 (Feature)</th>
+          <th style="width:30%" class="center">ALIS — 생산계획</th>
+          <th style="width:30%" class="center">TPDemo — 자동배치</th>
+          <th style="width:8%" class="center">격차</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>결과 메시지</td><td class="center">단순 완료/실패 1줄</td><td class="center">완료 + 위배 건수</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>메인 결과 그리드</td><td class="center">1개 (통합)</td><td class="center">2개 (Before / After)</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>패널티 그리드</td><td class="center">런타임만</td><td class="center">런타임 + DB 저장</td><td class="center"><span class="chip ana" style="padding:.15em .5em">PART</span></td></tr>
+        <tr><td>제약위배 요약</td><td class="center">그리드만</td><td class="center">요약 텍스트 포함</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>결과 요약 대시보드</td><td class="center">—</td><td class="center">GetConflictSummaryInfo</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>다차원 피벗 분석</td><td class="center">별도 뷰 (DB 기반)</td><td class="center">인라인 PivotGrid</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>그리드 간 네비게이션</td><td class="center">—</td><td class="center">클릭 → 필터/스크롤</td><td class="center"><span class="chip warn" style="padding:.15em .5em">GAP</span></td></tr>
+        <tr><td>부하 차트 (Before/After)</td><td class="center"><strong>chartLoadAnal1/2</strong></td><td class="center">—</td><td class="center"><span class="chip ok" style="padding:.15em .5em">EDGE</span></td></tr>
+        <tr><td>간트 차트 · 3D 도면 뷰</td><td class="center"><strong>GanttActivityPanel · dp05/06</strong></td><td class="center">—</td><td class="center"><span class="chip ok" style="padding:.15em .5em">EDGE</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="slide-foot">
+    <span>Comparison · 9 Features · 6 GAP / 2 EDGE / 1 PART</span>
+    <span class="slide-num"><em>05</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 6 — TPDemo strengths
+     ============================================================ -->
+<section class="slide" id="slide-6"
+  data-notes="TPDemo는 결과를 데이터 파이프라인으로 처리합니다. MakeOptResult → MakeBatchViewModel → CalcCnstValue → MakePersonalCnstInfo. 우리가 배워야 할 것은 이 파이프라인의 발상입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">TPDemo Strengths</span>
+    <h2>TPDemo의 4가지 결과 리포팅 강점</h2>
+  </div>
+  <div class="center-flex">
+    <div class="strength-grid">
+      <div class="strength tp">
+        <div class="glyph">★</div>
+        <div class="name">결과 요약 패널</div>
+        <div class="desc">총 패널티·리워드·이동인원·평균 이동일수를 화면 상단 한 줄에 요약. 사용자가 결과 품질을 즉시 인식.</div>
+      </div>
+      <div class="strength tp">
+        <div class="glyph">⇄</div>
+        <div class="name">Before / After</div>
+        <div class="desc">변경 전(PLN)과 변경 후(EST)를 두 그리드로 분리. Delta 컬럼으로 변경 폭 정렬·필터.</div>
+      </div>
+      <div class="strength tp">
+        <div class="glyph">▦</div>
+        <div class="name">인라인 피벗 분석</div>
+        <div class="desc">결과 데이터를 별도 SQL 없이 PivotGrid로 즉시 다차원 분석. 행×열×값 재구성 가능.</div>
+      </div>
+      <div class="strength tp">
+        <div class="glyph">⚠</div>
+        <div class="name">제약위배 요약</div>
+        <div class="desc"><span class="mono">GetConflictSummaryInfo()</span>로 "TEAM020: 3건, TEAM040: 5건" 형태의 카테고리 집계 텍스트 자동 생성.</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--ok);">
+      <div class="card-eyebrow" style="color: var(--ok);">Pipeline Pattern</div>
+      <p class="mono" style="font-size: var(--small-size); color: var(--fg);">
+        MakeOptResult → MakeBatchViewModel → CalcCnstValue → MakePersonalCnstInfo
+      </p>
+      <p style="margin-top:.3em; font-size: var(--small-size); color: var(--fg-muted);">
+        결과를 즉시 그리드에 바인딩하지 않고, <strong>3단 변환 파이프라인</strong>을 거친다. 이 과정이 곧 풍부한 리포팅의 비결.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>TPDemo · 4 Strengths to Adopt</span>
+    <span class="slide-num"><em>06</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 7 — ALIS strengths
+     ============================================================ -->
+<section class="slide" id="slide-7"
+  data-notes="우리가 잃지 말아야 할 강점입니다. TPDemo에는 없는 도메인 시각화가 ALIS에는 모두 있습니다. 단지 결과 리포팅의 폭만 더 넓혀주면 됩니다.">
+  <div class="slide-head">
+    <span class="eyebrow">ALIS Strengths</span>
+    <h2>ALIS만의 도메인 시각화 강점</h2>
+  </div>
+  <div class="center-flex">
+    <div class="strength-grid">
+      <div class="strength al">
+        <div class="glyph">≋</div>
+        <div class="name">부하 차트 (Before/After)</div>
+        <div class="desc"><span class="mono">chartLoadAnal1 / chartLoadAnal2</span><br>리소스별·기간별 부하 곡선을 최적화 전후로 오버레이. 평탄화 효과를 즉시 확인 가능.</div>
+      </div>
+      <div class="strength al">
+        <div class="glyph">▤</div>
+        <div class="name">간트 차트</div>
+        <div class="desc"><span class="mono">GanttActivityPanel</span><br>모든 ACT의 일정 막대 표시. 마우스 드래그로 수동 조정 후 재최적화도 가능.</div>
+      </div>
+      <div class="strength al">
+        <div class="glyph">◳</div>
+        <div class="name">3D 도면 뷰</div>
+        <div class="desc"><span class="mono">dp05 / dp06</span> DocumentPanel<br>블록 단위 3D 형상을 회전·줌으로 검토. 일정 변경 시 시각적 영향 추적.</div>
+      </div>
+      <div class="strength al">
+        <div class="glyph">◰</div>
+        <div class="name">DockLayoutManager</div>
+        <div class="desc">8개 DocumentPanel(dp01~dp08) 자유 배치. 사용자가 워크플로에 맞춰 레이아웃 저장·복원 가능.</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--ana);">
+      <div class="card-eyebrow" style="color: var(--ana);">Insight</div>
+      <p style="font-size: var(--small-size); color: var(--fg-dim);">
+        ALIS 강점은 <strong>도메인 깊이</strong>(생산 현장에 특화), TPDemo 강점은 <strong>결과 리포팅 폭</strong>.
+        두 강점을 합치면 <strong style="color: var(--ok);">도메인 시각화 + 풍부한 리포팅</strong>의 최적해가 된다.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>ALIS · 4 Domain-specific Strengths</span>
+    <span class="slide-num"><em>07</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 8 — Gap priority
+     ============================================================ -->
+<section class="slide" id="slide-8"
+  data-notes="우선순위는 사용자가 가장 빠르게 가치를 느끼는 순서로 정렬했습니다. P1, P2가 1주 안에 가능한 것들이고, P3는 피벗 분석이라 좀 더 시간이 듭니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Gap Analysis</span>
+    <h2>우선순위 — 사용자 가치 기준 P1 ~ P4</h2>
+  </div>
+  <div class="center-flex">
+    <div class="prio-list">
+      <div class="prio-item p1">
+        <div class="prio-tag">P1</div>
+        <div>
+          <div class="prio-title">결과 요약 패널 / 제약위배 요약</div>
+          <div class="prio-desc">최적화 직후 사용자가 한눈에 파악. 가장 작은 수정으로 가장 큰 효과 — TPDemo의 <span class="mono">GetConflictSummaryInfo()</span> 패턴 그대로 차용.</div>
+        </div>
+        <div class="prio-eta">1 ~ 2일</div>
+      </div>
+      <div class="prio-item p2">
+        <div class="prio-tag">P2</div>
+        <div>
+          <div class="prio-title">Before / After 일정변경 그리드</div>
+          <div class="prio-desc">PLN_ST/FI vs EST_ST/FI + Delta(일) 컬럼. 큰 변화 우선 정렬, 신규 모델 <span class="mono">OptScheduleChangeItem</span> 추가.</div>
+        </div>
+        <div class="prio-eta">2 ~ 3일</div>
+      </div>
+      <div class="prio-item p3">
+        <div class="prio-tag">P3</div>
+        <div>
+          <div class="prio-title">인라인 피벗 분석</div>
+          <div class="prio-desc">행: 리소스→계약구분 / 열: 월(EST_ST) / 값: MUL_WGT·MHR_TOT·ACT수. 기존 <span class="mono">ScmPivotReportView</span> XAML 70% 재활용.</div>
+        </div>
+        <div class="prio-eta">3 ~ 4일</div>
+      </div>
+      <div class="prio-item p4">
+        <div class="prio-tag">P4</div>
+        <div>
+          <div class="prio-title">그리드 간 네비게이션 + 엑셀</div>
+          <div class="prio-desc">위배/패널티 → 메인 그리드 자동 스크롤. 부하 차트 리소스 하이라이트. 그리드별 엑셀 버튼 추가.</div>
+        </div>
+        <div class="prio-eta">1 ~ 2일</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Gap Priority · Total ≈ 7~11 days</span>
+    <span class="slide-num"><em>08</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 9 — Problem screen
+     ============================================================ -->
+<section class="slide" id="slide-9"
+  data-notes="문제는 매번 같은 메시지로 옵니다. 그러나 메시지 한 줄로는 사용자가 뭘 해야 할지 알 수 없죠. 진단의 출발점이 곧 우리의 첫 개선 지점입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 3 · KSHIFT Problem</span>
+    <h2>문제 현상 — 사용자가 마주한 화면</h2>
+  </div>
+  <div class="center-flex">
+    <div class="error-frame">
+      <div class="error-msg">⚠ "해가 존재하지 않습니다. 제약위배사항을 확인하세요."</div>
+      <div class="error-trace">CPLEX Solver Output:
+<span style="color:var(--warn);">Infeasibility row 'SCD000.[masked-project].ACT014':  0  =  1.</span>
+Presolve time = 0.00 sec. (1.08 ticks)
+Refine conflict on 1135 members...
+→ Minimum Conflict Set: <span style="color:var(--ana);">11 constraints</span></div>
+    </div>
+    <div class="kpi" style="margin-top: var(--gap-3);">
+      <div class="kpi-tile">
+        <div class="v">498</div>
+        <div class="l">대상 ACT (작업)</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="v">83</div>
+        <div class="l">프로젝트 (블록)</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="v">11</div>
+        <div class="l">충돌 제약 (Conflict Set)</div>
+      </div>
+    </div>
+    <p style="margin-top: var(--gap-2); font-size: var(--small-size); color: var(--fg-muted); text-align: center;">
+      ※ 본 발표의 모든 프로젝트 식별자는 <strong>Block #1 ~ #11</strong> 또는 <strong>예시 케이스</strong>로 마스킹 처리되었습니다.
+    </p>
+  </div>
+  <div class="slide-foot">
+    <span>Problem · "해가 없습니다"</span>
+    <span class="slide-num"><em>09</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 10 — Conflict 11 boxes
+     ============================================================ -->
+<section class="slide" id="slide-10"
+  data-notes="이 11개 박스가 CPLEX가 Conflict Refinement로 좁혀준 핵심입니다. 1135개 제약 중 단 11개. 이 11개의 패턴을 보면 답이 보입니다 — SCD000 1개 + SCD002 10개라는 비율 자체가 단서입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">CPLEX Diagnostic</span>
+    <h2>Minimum Conflict Set — 11개 제약</h2>
+  </div>
+  <div class="center-flex">
+    <div class="row" style="margin-bottom: var(--gap-2); justify-content: center;">
+      <span class="chip ana">SCD000 · 일정 배정 = 1건</span>
+      <span class="chip warn">SCD002 · 용량 제약 = 10건 (Block #2의 후보 날짜 수)</span>
+    </div>
+    <div class="conflict-grid">
+      <div class="cf-box scd000">
+        <span class="code">#1 SCD000</span>
+        <span class="det">Block #2.ACT014 = 1</span>
+      </div>
+      <div class="cf-box scd002"><span class="code">#2 SCD002</span><span class="det">RES004 · 06/30 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#3 SCD002</span><span class="det">RES004 · 07/01 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#4 SCD002</span><span class="det">RES004 · 07/02 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#5 SCD002</span><span class="det">RES004 · 07/03 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#6 SCD002</span><span class="det">RES004 · 07/04 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#7 SCD002</span><span class="det">RES004 · 07/07 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#8 SCD002</span><span class="det">RES004 · 07/08 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#9 SCD002</span><span class="det">RES004 · 07/09 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#10 SCD002</span><span class="det">RES004 · 07/10 ≤ 200</span></div>
+      <div class="cf-box scd002"><span class="code">#11 SCD002</span><span class="det">RES004 · 07/11 ≤ 200</span></div>
+      <div class="cf-box" style="border-style: dashed; border-color: var(--line-strong); color: var(--fg-muted); background: transparent;">
+        <span class="code">패턴 단서</span>
+        <span class="det">"1 + 10" = ACT 후보 10일</span>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-left: 3px solid var(--ana); border-color: var(--line);">
+      <p style="font-size: var(--small-size); color: var(--fg-dim);">
+        <strong style="color: var(--ana);">패턴 발견</strong> —
+        <span class="mono">SCD000(1) + SCD002(10)</span>은 우연이 아닙니다. ACT 하나의 후보 날짜 10개가 모두 SCD002에 의해 막혔다는 뜻 → <strong>10개 날짜 중 어디에 배정해도 용량 초과</strong>라는 가설로 직결.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>CPLEX Conflict · 1 + 10 = 11</span>
+    <span class="slide-num"><em>10</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 11 — 1st hypothesis
+     ============================================================ -->
+<section class="slide" id="slide-11"
+  data-notes="1차 분석 보고서에서 우리가 세웠던 가설들입니다. 셋 다 합리적이었지만, 결국 LP 파일 한 줄이 모두를 뒤집었습니다. 이게 왜 중요한가요? 가설 검증 없이 코드를 고치기 시작하면 반드시 오답에 도달한다는 교훈이기 때문입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">1st Hypothesis</span>
+    <h2>1차 가설 — 합리적이지만 빗나간 추측들</h2>
+  </div>
+  <div class="center-flex">
+    <div class="hyp-grid">
+      <div class="hyp">
+        <div class="mono-hint">HYPOTHESIS · 01</div>
+        <h3>durOffset이 좁다 (10일)</h3>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">SCD001 = 10. 결정변수 후보 날짜가 10개 근무일뿐. 20~30일로 늘리면 해를 찾을 수 있다는 추측.</p>
+        <div class="verdict miss">✗ MISS — 결정변수는 10개 정상 생성됨</div>
+      </div>
+      <div class="hyp">
+        <div class="mono-hint">HYPOTHESIS · 02</div>
+        <h3>선후행 역전</h3>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">6개 ACT의 순차 배정에서 PLN_FI 정합성이 깨졌을 가능성. 진단 SQL #3으로 검증 필요.</p>
+        <div class="verdict miss">✗ MISS — LP에 SCD100(역전금지)은 충돌에 없음</div>
+      </div>
+      <div class="hyp">
+        <div class="mono-hint">HYPOTHESIS · 03</div>
+        <h3>캘린더 데이터 의심</h3>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">STD_CALENDAR(MASTER)의 휴일·근무일 잘못 설정. AddCalDaysDt 결과가 비어있을 가능성.</p>
+        <div class="verdict miss">✗ MISS — 2025-06/07 모두 정상 근무일 22~20일</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--warn);">
+      <div class="card-eyebrow" style="color: var(--warn);">교훈</div>
+      <p style="font-size: var(--body-size); color: var(--fg-dim);">
+        세 가설 모두 <strong>코드와 SQL만 보고</strong> 세운 추측이었다.
+        진짜 답은 <strong style="color: var(--ana);">LP 파일 안에 그대로 적혀 있었다</strong> — 솔버에게 무엇을 시켰는지 보지 않고는 진단이 불가능하다.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>1st Hypothesis · all missed</span>
+    <span class="slide-num"><em>11</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 12 — LP file verification
+     ============================================================ -->
+<section class="slide" id="slide-12"
+  data-notes="LP 파일을 열어보면 모든 게 명확해집니다. 결정변수는 정상이지만 목적함수가 비어있다는 것 — 이게 가장 큰 단서입니다. 패널티를 최소화한다면서 패널티 항을 안 넣었다는 뜻이니까요.">
+  <div class="slide-head">
+    <span class="eyebrow">LP File Verification</span>
+    <h2>LP 파일이 말해준 것 — 결정변수는 정상, 목적함수가 비었다</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-2">
+      <div class="stack">
+        <div class="card">
+          <div class="card-eyebrow">FILE STRUCTURE (예시 LP 파일)</div>
+          <table class="compare" style="font-size: var(--tiny-size); box-shadow: none;">
+            <tr><td>Header (1~5)</td><td><span class="mono">Minimize obj:</span> ← <strong style="color:var(--warn)">비어있음</strong></td></tr>
+            <tr><td>Subject To (6~18,733)</td><td>1,135개 제약식</td></tr>
+            <tr><td>Bounds (~23,714)</td><td>4,980개 변수 (0 ≤ x ≤ 1)</td></tr>
+            <tr><td>Generals (~26,205)</td><td>4,980개 정수 변수</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-eyebrow">결정변수 (정상)</div>
+          <p style="font-size: var(--small-size); color: var(--fg-dim);">
+            ACT당 10개 후보 날짜. 498 ACT × 10 = <strong style="color:var(--ok);">4,980개 정상 생성</strong>.
+            durOffset도 캘린더도 모두 작동 중.
+          </p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="lp-block">
+<span class="key">Minimize</span>
+ obj:                         <span class="miss">← 비어있다 (!)</span>
+
+<span class="key">Subject To</span>
+ SCD000.Block#2.ACT014:
+   x_0630 + x_0701 + ... + x_0711 <span class="op">= 1</span>
+
+ SCD002.RES004.D20250711:
+   <span class="num">1658.37</span> · x_ACT014_0711
+ + <span class="num">740.53</span>  · x_ACT014_other
+ + ... <span class="op">≤ 200</span>      <span class="miss">← Hard!</span>
+
+<span class="key">End</span>
+        </div>
+        <div class="card" style="border-color: var(--ana);">
+          <div class="card-eyebrow" style="color: var(--ana);">두 단서</div>
+          <p style="font-size: var(--small-size); color: var(--fg-dim);">
+            <strong>① 목적함수가 비었다</strong> → SCD002가 패널티(Soft)로 동작하지 않는다.<br>
+            <strong>② SCD002가 ≤ (Hard)</strong> → 어떤 날짜에 배정해도 용량 초과면 즉시 Infeasible.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>LP Verification · obj is empty · SCD002 is Hard</span>
+    <span class="slide-num"><em>12</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 13 — Root cause equation
+     ============================================================ -->
+<section class="slide" id="slide-13"
+  data-notes="진짜 원인은 수학식 한 줄로 끝납니다. 1658이 200보다 크다. 이걸 ≤로 묶어버리면 어떤 날짜에도 해가 없습니다. 단순한 부등식 하나가 11개 충돌의 근원입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Root Cause</span>
+    <h2>근본 원인 — 부등식 한 줄</h2>
+  </div>
+  <div class="center-flex">
+    <div class="eq">
+      <div>
+        <span class="lhs">MUL_WGT (Block #2의 ACT014)</span>
+        <span class="op">vs</span>
+        <span class="rhs">DAY_CAPA (RES004)</span>
+      </div>
+      <div style="margin-top: var(--gap-1); font-size: 1.1em;">
+        <span class="lhs">1,658.37 톤</span>
+        <span class="op">＞</span>
+        <span class="rhs">200 톤</span>
+        <span style="color:var(--fg-muted); font-size: .7em;">(8.29 배)</span>
+      </div>
+      <div style="margin-top: var(--gap-2); font-family: 'Pretendard', sans-serif; font-size: var(--small-size); color: var(--fg-dim);">
+        한 ACT의 물량이 일일 용량을 8배 초과 → 어떤 날짜를 골라도 SCD002 위반
+      </div>
+      <div class="verdict">
+        ⚠ SCD000은 "반드시 1개 날짜를 배정하라"고 요구 → <strong style="color: var(--warn);">수학적으로 해가 불가능</strong>
+      </div>
+    </div>
+    <div class="cols-3" style="margin-top: var(--gap-3);">
+      <div class="kpi-tile" style="background: var(--ana-soft); border-color: var(--ana);">
+        <div class="v" style="color: var(--ana);">10</div>
+        <div class="l">ACT014의 후보 날짜 수</div>
+      </div>
+      <div class="kpi-tile" style="background: var(--warn-soft); border-color: var(--warn);">
+        <div class="v">10</div>
+        <div class="l">모든 날짜에서 SCD002 위반</div>
+      </div>
+      <div class="kpi-tile" style="background: var(--bg-card);">
+        <div class="v" style="color: var(--ok);">= 11</div>
+        <div class="l">CPLEX 충돌 출력과 정확히 일치</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Root Cause · 1658 &gt; 200 · 8.29x</span>
+    <span class="slide-num"><em>13</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 14 — Hard vs Soft (design vs impl)
+     ============================================================ -->
+<section class="slide" id="slide-14"
+  data-notes="이 슬라이드가 워크샵의 진짜 핵심입니다. DB는 Soft라고 정의했는데 코드는 Hard로 구현했습니다. 그리고 이 사실은 LP 파일이 폭로하기 전까지 아무도 몰랐습니다. 단위 테스트가 모델까지 검증해야 하는 이유입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Design vs Implementation</span>
+    <h2>설계는 Soft, 구현은 Hard — 사일런트 불일치</h2>
+  </div>
+  <div class="center-flex">
+    <div class="dual">
+      <div class="dual-card soft">
+        <div class="label">설계 (DB Definition)</div>
+        <div class="src">SCM_CASE_CNST_MASTER.SCD002</div>
+        <div class="quote">"일일 생산능력 초과 물량에 대해서 <strong style="color:var(--ok);">감점</strong> 적용"</div>
+        <div class="body">의도: <strong>Soft 제약</strong>. 용량 초과를 허용하되 <strong>패널티 가중치(=2)</strong>로 목적함수에 반영하여 최소화한다. 해는 항상 존재.</div>
+        <div class="chip ok">PENALTY_VAL = 2</div>
+      </div>
+      <div class="vs">≠</div>
+      <div class="dual-card hard">
+        <div class="label">구현 (LP 모델)</div>
+        <div class="src">OptManager.cs · SCD002 제약 생성 코드</div>
+        <div class="quote">IloCnstList.Add(<strong style="color:var(--warn);">AddLe</strong>(expr, dayCapacity, name));</div>
+        <div class="body">실제: <strong>Hard 제약 (≤)</strong>. 용량 초과 즉시 Infeasible. 목적함수에는 어떤 패널티 항도 추가되지 않아 <span class="mono">Minimize obj:</span>가 비어버림.</div>
+        <div class="chip warn">obj = 비어있음</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--ana);">
+      <div class="card-eyebrow" style="color: var(--ana);">왜 발견되지 않았나?</div>
+      <p style="font-size: var(--small-size); color: var(--fg-dim);">
+        ① 코드 리뷰는 함수 시그니처만 봤다 (AddLe vs AddLe + slack 차이를 못 잡음).<br>
+        ② DB 컬럼 설명("감점")은 화면에 안 보였다.<br>
+        ③ 작은 케이스에서는 우연히 모든 MUL_WGT &lt; DAY_CAPA여서 해가 나왔다 → "정상 동작"으로 오해.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Design Soft ≠ Implementation Hard</span>
+    <span class="slide-num"><em>14</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 15 — Impact bar chart 11 blocks
+     ============================================================ -->
+<section class="slide" id="slide-15"
+  data-notes="이 차트는 11개 블록을 DAY_CAPA 대비 초과 배율로 정렬한 겁니다. 1배 선이 통과 기준입니다. 11개 모두 1배를 넘었고, 가장 큰 건 9배에 달합니다. 11개를 해결하지 못하면 영원히 해를 못 찾습니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Impact</span>
+    <h2>영향 범위 — 동일 문제 11개 블록</h2>
+  </div>
+  <div class="center-flex">
+    <div class="row" style="margin-bottom: var(--gap-2); justify-content: space-between;">
+      <span class="chip warn">DAY_CAPA = 200 (RES002·003·004·007 기준)</span>
+      <span class="chip ana">정상 블록 비교: MUL_WGT ≈ 51.96 (0.26x)</span>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-row">
+        <span class="bar-name">Block #1</span>
+        <div class="bar-track"><div class="bar-fill crit" style="width: 100%;"></div></div>
+        <span class="bar-num">9.03×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #2</span>
+        <div class="bar-track"><div class="bar-fill crit" style="width: 92%;"></div></div>
+        <span class="bar-num">8.29×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #3</span>
+        <div class="bar-track"><div class="bar-fill crit" style="width: 73%;"></div></div>
+        <span class="bar-num">6.55×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #4</span>
+        <div class="bar-track"><div class="bar-fill crit" style="width: 56%;"></div></div>
+        <span class="bar-num">5.08×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #5</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 41%;"></div></div>
+        <span class="bar-num">3.70×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #6</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 37%;"></div></div>
+        <span class="bar-num">3.38×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #7</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 32%;"></div></div>
+        <span class="bar-num">2.85×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #8</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 31%;"></div></div>
+        <span class="bar-num">2.78×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #9</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 22%;"></div></div>
+        <span class="bar-num">1.95×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #10</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 15%;"></div></div>
+        <span class="bar-num">1.33×</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-name">Block #11</span>
+        <div class="bar-track"><div class="bar-fill" style="width: 12%;"></div></div>
+        <span class="bar-num">1.02×</span>
+      </div>
+    </div>
+    <p style="margin-top: var(--gap-2); font-size: var(--small-size); color: var(--fg-muted); text-align: center;">
+      ※ 막대 길이 = DAY_CAPA(=200) 대비 MUL_WGT 초과 배율. 1.0× 미만이어야 SCD002(Hard) 만족.
+      11/83 ≈ <strong style="color: var(--warn);">13.3%</strong>의 블록이 해를 막고 있다.
+    </p>
+  </div>
+  <div class="slide-foot">
+    <span>Impact · 11 blocks (masked) · 1.02× ~ 9.03×</span>
+    <span class="slide-num"><em>15</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 16 — Immediate action
+     ============================================================ -->
+<section class="slide" id="slide-16"
+  data-notes="가장 빠르고 안전한 조치입니다. DB가 원래 Soft라고 정의해놓았으니 우리는 그저 그 의도를 코드에 복원하는 것뿐입니다. 1~2일이면 됩니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 4 · Solutions</span>
+    <h2>즉시 조치 — SCD002를 Soft 제약으로 전환</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-2">
+      <div class="sol-card warn">
+        <div class="num">현재 (Hard)</div>
+        <div class="ttl">즉시 Infeasible</div>
+        <div class="desc">
+          <span class="mono" style="display:block; padding:.4em .6em; background: var(--bg-elev); border-radius: 6px; margin-top: .4em; font-size: var(--tiny-size);">IloCnstList.Add(AddLe(expr, dayCapacity, name));</span>
+          용량 초과 시 해를 못 찾고 그대로 종료. 목적함수에는 어떤 항도 추가되지 않음.
+        </div>
+        <div class="meta">
+          <span class="chip warn">obj = ∅</span>
+          <span class="chip warn">11 블록 막힘</span>
+        </div>
+      </div>
+      <div class="sol-card">
+        <div class="num">변경 (Soft)</div>
+        <div class="ttl">슬랙 변수 + 패널티</div>
+        <div class="desc">
+          <span class="mono" style="display:block; padding:.4em .6em; background: var(--bg-elev); border-radius: 6px; margin-top: .4em; font-size: var(--tiny-size); line-height:1.5;">slack = NumVar(0, MAX, "slack_" + name);
+AddLe(Sum(expr, Prod(-1, slack)), dayCapacity, name);
+objective.AddTerm(<strong>penaltyWeight</strong>, slack);</span>
+          용량 초과를 허용하되 패널티 가중치(<strong>SCD002.PENALTY_VAL = 2</strong>)로 최소화 — DB 정의와 일치하는 원래 설계 의도 복원.
+        </div>
+        <div class="meta">
+          <span class="chip ok">obj 복원</span>
+          <span class="chip ok">72 블록 정상화</span>
+        </div>
+      </div>
+    </div>
+    <div class="cols-3" style="margin-top: var(--gap-3);">
+      <div class="kpi-tile" style="background: var(--ok-soft); border-color: var(--ok);">
+        <div class="v" style="color: var(--ok);">1~2일</div>
+        <div class="l">예상 작업량</div>
+      </div>
+      <div class="kpi-tile" style="background: var(--ok-soft); border-color: var(--ok);">
+        <div class="v" style="color: var(--ok);">★★★★★</div>
+        <div class="l">권장도</div>
+      </div>
+      <div class="kpi-tile" style="background: var(--ok-soft); border-color: var(--ok);">
+        <div class="v" style="color: var(--ok);">낮음</div>
+        <div class="l">위험도 (의도 복원)</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Immediate · SCD002 → Soft</span>
+    <span class="slide-num"><em>16</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 17 — Parallel actions
+     ============================================================ -->
+<section class="slide" id="slide-17"
+  data-notes="Soft 전환만으로는 11개 블록의 패널티가 매우 커집니다. 그래서 병행해서 DAY_CAPA 자체가 현실을 반영하는지 확인하고, 필요시 대형 블록을 별도 처리하는 것이 좋습니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Parallel Actions</span>
+    <h2>병행 조치 — 현실화 + 사전 필터링</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-2">
+      <div class="sol-card ana">
+        <div class="num">방안 B</div>
+        <div class="ttl">DAY_CAPA 현실화 검토</div>
+        <div class="desc">
+          현재 RES004 (마킹팀) DAY_CAPA = 200. 실제 일일 처리 가능 물량이 2,000톤이라면 마스터 데이터 자체를 바로잡아야 한다.
+          <span class="mono" style="display:block; padding:.4em .6em; background: var(--bg-elev); border-radius:6px; margin-top:.4em; font-size: var(--tiny-size);">UPDATE SCM_RESOURCE_MASTER
+SET DAY_CAPA = 2000
+WHERE RESOURCE_NO = 'RES004' ...</span>
+        </div>
+        <div class="meta">
+          <span class="chip ana">30분 SQL</span>
+          <span class="chip warn">현장 확인 필수</span>
+        </div>
+      </div>
+      <div class="sol-card">
+        <div class="num">방안 D</div>
+        <div class="ttl">대형 블록 사전 필터링</div>
+        <div class="desc">
+          <span class="mono">MakeOptActList</span>에서 MUL_WGT &gt; DAY_CAPA × N 을 만족하는 ACT를 자동 검출하여 최적화 대상에서 분리. 수동 배정 후 나머지 72개 블록만 최적화.
+        </div>
+        <div class="meta">
+          <span class="chip ok">부분 해 확보</span>
+          <span class="chip ok">30분 코드</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--ok);">
+      <div class="card-eyebrow" style="color: var(--ok);">권장 조합</div>
+      <p style="font-size: var(--body-size); color: var(--fg-dim);">
+        <strong>A (Soft 전환)</strong> + <strong>B (DAY_CAPA 검토)</strong> 병행.
+        Soft 전환으로 항상 해가 나오게 하고, 비현실적 마스터 데이터는 별도로 정정. D는 임시 우회용으로만 사용.
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Parallel · A + B</span>
+    <span class="slide-num"><em>17</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 18 — Short term roadmap
+     ============================================================ -->
+<section class="slide" id="slide-18"
+  data-notes="단기 로드맵은 사용자에게 왜를 알려주는 것에 초점을 맞췄습니다. 메시지 하나, 다이얼로그 하나가 사용자 경험을 완전히 바꿉니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Short Term · 1~2 Weeks</span>
+    <h2>단기 로드맵 — 사용자에게 '왜'를 보여준다</h2>
+  </div>
+  <div class="center-flex">
+    <div class="gantt">
+      <div class="gantt-row">
+        <span class="gantt-label">제약위배 한국어화</span>
+        <div class="gantt-bar"><div class="seg ok" style="left: 0%; width: 22%;">2일</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">제약 요약 패널</span>
+        <div class="gantt-bar"><div class="seg ok" style="left: 18%; width: 25%;">2~3일</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">자동 제안 다이얼로그</span>
+        <div class="gantt-bar"><div class="seg ana" style="left: 38%; width: 28%;">3일</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">사전 진단 SQL 통합</span>
+        <div class="gantt-bar"><div class="seg ana" style="left: 60%; width: 22%;">2일</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">테스트 + 회귀</span>
+        <div class="gantt-bar"><div class="seg warn" style="left: 78%; width: 22%;">2일</div></div>
+      </div>
+      <div class="gantt-axis">
+        <span></span>
+        <div class="ticks">
+          <span>W1·월</span><span>화</span><span>수</span><span>목</span>
+          <span>W2·월</span><span>화</span><span>수</span><span>목</span>
+        </div>
+      </div>
+    </div>
+    <div class="cols-3" style="margin-top: var(--gap-3);">
+      <div class="card">
+        <div class="card-eyebrow">Before</div>
+        <p class="mono" style="font-size: var(--tiny-size); color: var(--warn);">SCD000.[masked].ACT014: 0=1</p>
+      </div>
+      <div class="card" style="border-color: var(--ok);">
+        <div class="card-eyebrow" style="color: var(--ok);">After</div>
+        <p style="font-size: var(--small-size); color: var(--fg);">Block #2의 마킹(ACT014) 작업에 배정 가능한 날짜가 없습니다.</p>
+      </div>
+      <div class="card" style="border-color: var(--ana);">
+        <div class="card-eyebrow" style="color: var(--ana);">Suggestion</div>
+        <p style="font-size: var(--small-size); color: var(--fg);">SCD002를 Soft 제약으로 전환하거나, DAY_CAPA를 검토하세요.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Short Term · 10~11 working days</span>
+    <span class="slide-num"><em>18</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 19 — Long term roadmap
+     ============================================================ -->
+<section class="slide" id="slide-19"
+  data-notes="장기 목표는 문제가 발생하기 전에 막는다입니다. 사전 진단, 제약 완화 UI, What-If 분석 — 이 셋이 들어가면 사용자가 직접 문제를 다룰 수 있습니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Long Term · 1~2 Months</span>
+    <h2>장기 로드맵 — 사용자가 직접 진단하게 한다</h2>
+  </div>
+  <div class="center-flex">
+    <div class="gantt">
+      <div class="gantt-row">
+        <span class="gantt-label">사전 진단 시스템</span>
+        <div class="gantt-bar"><div class="seg ana" style="left: 0%; width: 35%;">2~3주 · RunPreOptDiagnostics</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">제약 완화 UI</span>
+        <div class="gantt-bar"><div class="seg ok" style="left: 30%; width: 32%;">2주 · 슬라이더+체크박스</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">What-If 분석</span>
+        <div class="gantt-bar"><div class="seg warn" style="left: 58%; width: 28%;">2주 · 시나리오 비교</div></div>
+      </div>
+      <div class="gantt-row">
+        <span class="gantt-label">충돌 시각화 대시보드</span>
+        <div class="gantt-bar"><div class="seg ana" style="left: 82%; width: 18%;">1.5주</div></div>
+      </div>
+      <div class="gantt-axis">
+        <span></span>
+        <div class="ticks">
+          <span>M1·W1</span><span>W2</span><span>W3</span><span>W4</span>
+          <span>M2·W1</span><span>W2</span><span>W3</span><span>W4</span>
+        </div>
+      </div>
+    </div>
+    <div class="cols-3" style="margin-top: var(--gap-3);">
+      <div class="card" style="border-color: var(--ana);">
+        <div class="card-eyebrow" style="color: var(--ana);">Pre-flight Check</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">
+          ① 캘린더 범위<br>
+          ② PLN 일정 결측<br>
+          ③ 용량 초과 사전 감지<br>
+          ④ 일정 윈도우 부족<br>
+          ⑤ 선후행 정합성
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--ok);">
+        <div class="card-eyebrow" style="color: var(--ok);">제약 완화 UI</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">
+          - 제약별 Hard ↔ Soft 토글<br>
+          - durOffset 슬라이더 (10~50)<br>
+          - PENALTY_VAL 조정<br>
+          - 완화 후 즉시 재실행
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--warn);">
+        <div class="card-eyebrow" style="color: var(--warn);">What-If 분석</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim);">
+          - 시나리오 N개 동시 비교<br>
+          - 부하 차트 오버레이<br>
+          - 패널티/리워드 차이 시각화<br>
+          - 결과 채택 후 자동 반영
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Long Term · 1.5~2 Months</span>
+    <span class="slide-num"><em>19</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 20 — Reporting P1 mock
+     ============================================================ -->
+<section class="slide" id="slide-20"
+  data-notes="Priority 1 — 결과 요약 패널입니다. 최적화 직후 사용자가 가장 먼저 봐야 할 4가지 숫자를 한 줄에 배치했습니다. 기획자가 본 결과 품질을 즉시 평가할 수 있어야 합니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 5 · Reporting</span>
+    <h2>Priority 1 — 결과 요약 패널</h2>
+  </div>
+  <div class="center-flex">
+    <div class="mock">
+      <div class="mock-head">OPTIMIZATION RESULT · 마스터 플랜 최적화</div>
+      <div class="mock-summary">
+        <div class="stat warn">
+          <div class="v">142.5</div>
+          <div class="l">총 패널티 점수</div>
+        </div>
+        <div class="stat">
+          <div class="v">86.0</div>
+          <div class="l">총 리워드 점수</div>
+        </div>
+        <div class="stat ana">
+          <div class="v">37</div>
+          <div class="l">일정 변경 ACT 수</div>
+        </div>
+        <div class="stat">
+          <div class="v">+4.2일</div>
+          <div class="l">평균 이동일수</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: var(--gap-1); margin-top: var(--gap-1); padding-top: var(--gap-1); border-top: 1px dashed var(--line);">
+        <span class="chip ana">SCD002 위배: 11건</span>
+        <span class="chip warn">용량 초과: 평균 3.2배</span>
+        <span class="chip ok">정상 배치: 72/83 블록</span>
+      </div>
+    </div>
+    <div class="cols-2" style="margin-top: var(--gap-3);">
+      <div class="card">
+        <div class="card-eyebrow">소스 코드 위치</div>
+        <p class="mono" style="font-size: var(--small-size); color: var(--fg);">OptManager.GetSummaryInfo()</p>
+        <p style="font-size: var(--tiny-size); color: var(--fg-muted);">PenaltyModel + RewardModel 컬렉션 합계 계산</p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">UI 위치</div>
+        <p class="mono" style="font-size: var(--small-size); color: var(--fg);">ScmMasterPlanManager.xaml</p>
+        <p style="font-size: var(--tiny-size); color: var(--fg-muted);">결과 탭 상단 tbOptSummary TextBlock 추가</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Reporting P1 · Result Summary Panel</span>
+    <span class="slide-num"><em>20</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 21 — Reporting P2 Before/After
+     ============================================================ -->
+<section class="slide" id="slide-21"
+  data-notes="Priority 2는 일정변경 그리드입니다. PLN과 EST를 한 행에 놓고 Delta로 정렬하면, 사용자가 가장 큰 변화부터 검토할 수 있습니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Reporting P2</span>
+    <h2>Priority 2 — Before / After 일정변경 그리드</h2>
+  </div>
+  <div class="center-flex">
+    <div class="mock">
+      <div class="mock-head">BEFORE / AFTER GRID · Delta 절대값 정렬</div>
+      <table class="mock-table">
+        <thead>
+          <tr>
+            <th>PROJECT</th><th>ACT</th><th>RES</th>
+            <th>PLN_ST</th><th>PLN_FI</th>
+            <th>EST_ST</th><th>EST_FI</th>
+            <th>Δ (일)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Block #2</td><td>ACT014</td><td>RES004</td><td>07/11</td><td>07/11</td><td>06/30</td><td>06/30</td><td class="delta-neg">−11</td></tr>
+          <tr><td>Block #1</td><td>ACT014</td><td>RES004</td><td>07/05</td><td>07/05</td><td>07/24</td><td>07/24</td><td class="delta-pos">+19</td></tr>
+          <tr><td>Block #3</td><td>ACT015</td><td>RES005</td><td>07/12</td><td>07/12</td><td>07/22</td><td>07/22</td><td class="delta-pos">+10</td></tr>
+          <tr><td>Block #5</td><td>ACT017</td><td>RES003</td><td>06/24</td><td>06/24</td><td>06/16</td><td>06/16</td><td class="delta-neg">−8</td></tr>
+          <tr><td>Block #7</td><td>ACT016</td><td>RES006</td><td>07/03</td><td>07/03</td><td>06/27</td><td>06/27</td><td class="delta-neg">−6</td></tr>
+          <tr><td>Block #9</td><td>ACT018</td><td>RES002</td><td>07/15</td><td>07/15</td><td>07/19</td><td>07/19</td><td class="delta-pos">+4</td></tr>
+          <tr><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cols-2" style="margin-top: var(--gap-3);">
+      <div class="card" style="border-color: var(--ok);">
+        <div class="card-eyebrow" style="color: var(--ok);">신규 모델</div>
+        <p class="mono" style="font-size: var(--small-size);">OptScheduleChangeItem.cs</p>
+        <p style="font-size: var(--tiny-size); color: var(--fg-muted);">PLN/EST + Delta + Direction(앞당김/지연) 속성</p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">필터 옵션</div>
+        <p style="font-size: var(--tiny-size); color: var(--fg-dim);">
+          • 변경된 ACT만 표시<br>
+          • |Δ| ≥ N 일 이상<br>
+          • 리소스별 / 프로젝트별 필터<br>
+          • 엑셀 내보내기 (개별 그리드)
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Reporting P2 · Schedule Diff Grid</span>
+    <span class="slide-num"><em>21</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 22 — Reporting P3 Pivot
+     ============================================================ -->
+<section class="slide" id="slide-22"
+  data-notes="Priority 3는 인라인 피벗입니다. 별도 화면을 열지 않고도 결과를 행과 열 차원으로 즉석에서 재구성할 수 있습니다. 기존 ScmPivotReportView XAML을 70% 재활용 가능합니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Reporting P3</span>
+    <h2>Priority 3 — 인라인 피벗 분석</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-2">
+      <div class="mock">
+        <div class="mock-head">PIVOT · 행: 리소스 → 계약구분 / 열: 월 / 값: MUL_WGT 합계</div>
+        <div class="pivot-grid">
+          <div class="ph">RES / 월</div>
+          <div class="ph">06월</div>
+          <div class="ph">07월</div>
+          <div class="ph">08월</div>
+          <div class="ph">09월</div>
+          <div class="ph">합계</div>
+
+          <div class="ph">RES002</div>
+          <div class="v a">1,240</div>
+          <div class="v b">1,860</div>
+          <div class="v b">1,540</div>
+          <div class="v">820</div>
+          <div class="v c">5,460</div>
+
+          <div class="ph">RES003</div>
+          <div class="v a">980</div>
+          <div class="v a">1,120</div>
+          <div class="v b">1,310</div>
+          <div class="v">640</div>
+          <div class="v c">4,050</div>
+
+          <div class="ph">RES004</div>
+          <div class="v c">2,480</div>
+          <div class="v c">3,140</div>
+          <div class="v b">1,820</div>
+          <div class="v a">920</div>
+          <div class="v c">8,360</div>
+
+          <div class="ph">RES005</div>
+          <div class="v">540</div>
+          <div class="v a">880</div>
+          <div class="v a">1,040</div>
+          <div class="v">420</div>
+          <div class="v b">2,880</div>
+
+          <div class="ph">RES006</div>
+          <div class="v a">1,160</div>
+          <div class="v b">2,210</div>
+          <div class="v b">1,940</div>
+          <div class="v a">1,080</div>
+          <div class="v c">6,390</div>
+
+          <div class="ph">RES007</div>
+          <div class="v">680</div>
+          <div class="v a">920</div>
+          <div class="v a">880</div>
+          <div class="v">410</div>
+          <div class="v b">2,890</div>
+        </div>
+        <p style="font-size: var(--tiny-size); color: var(--fg-muted); margin-top: .4em;">
+          색상: <span style="color: var(--ana);">■ 보라</span> 낮은 부하 · <span style="color: var(--ok);">■ 청록</span> 적정 · <span style="color: var(--warn);">■ 주황</span> 임계 초과
+        </p>
+      </div>
+      <div class="stack">
+        <div class="card" style="border-color: var(--ana);">
+          <div class="card-eyebrow" style="color: var(--ana);">축 구성</div>
+          <p style="font-size: var(--small-size); color: var(--fg-dim);">
+            <strong>행</strong> 리소스 → 계약구분 → 프로젝트 (드릴다운)<br>
+            <strong>열</strong> 월 (EST_ST 기준) → 일자<br>
+            <strong>값</strong> MUL_WGT 합 / MHR_TOT 합 / ACT 건수
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-eyebrow">재활용 자산</div>
+          <p style="font-size: var(--small-size); color: var(--fg-dim);">
+            기존 <span class="mono">ScmPivotReportView.xaml</span>의<br>
+            <strong>PivotGrid + Chart 패턴 70%</strong> 그대로 재사용. SQL 로딩 부분만 인메모리 컬렉션으로 교체.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Reporting P3 · Inline Pivot Analysis</span>
+    <span class="slide-num"><em>22</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 23 — Claude CLI integration
+     ============================================================ -->
+<section class="slide" id="slide-23"
+  data-notes="이 분석을 가능하게 한 도구도 같이 소개합니다. Claude Code CLI를 .NET WPF에서 직접 호출해, LP 파일·소스 코드·DB 스키마를 한꺼번에 읽고 자연어로 진단할 수 있게 한 자동화 사례입니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Block 6 · Capability</span>
+    <h2>Claude Code CLI 통합 — .NET WPF 자동화 사례</h2>
+  </div>
+  <div class="center-flex">
+    <div class="arch">
+      <div class="arch-box wpf">
+        <div class="glyph">▣</div>
+        <div class="ttl">WPF UI</div>
+        <div class="sub">사용자 프롬프트<br>실시간 채팅 버블</div>
+      </div>
+      <div class="arch-arrow">━━▶</div>
+      <div class="arch-box svc">
+        <div class="glyph">⚙</div>
+        <div class="ttl">ClaudeCliService</div>
+        <div class="sub">CliWrap + stream-json<br>NDJSON 라인별 파싱</div>
+      </div>
+      <div class="arch-arrow">━━▶</div>
+      <div class="arch-box cli">
+        <div class="glyph">◆</div>
+        <div class="ttl">claude CLI</div>
+        <div class="sub">로컬 파일 분석<br>Read · Glob · Grep · Bash</div>
+      </div>
+    </div>
+    <div class="cols-3" style="margin-top: var(--gap-3);">
+      <div class="card">
+        <div class="card-eyebrow">핵심 메서드</div>
+        <p class="mono" style="font-size: var(--tiny-size); color: var(--fg); line-height: 1.6;">
+          ClaudeCliService.RunAsync<br>
+          ParseLine<br>
+          HandleStreamEvent<br>
+          HandleResultMessage
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">실시간 이벤트</div>
+        <p class="mono" style="font-size: var(--tiny-size); color: var(--fg); line-height: 1.6;">
+          OnTextDelta · 토큰<br>
+          OnToolUse · 도구 실행<br>
+          OnResult · 비용/세션ID<br>
+          OnError · stderr
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--ok);">
+        <div class="card-eyebrow" style="color: var(--ok);">활용 시나리오</div>
+        <p style="font-size: var(--tiny-size); color: var(--fg-dim); line-height: 1.6;">
+          • LP 파일 자동 진단<br>
+          • DB 스키마 vs 코드 일치 검사<br>
+          • 회귀 테스트 케이스 자동 생성<br>
+          • Multi-turn 세션 (--resume)
+        </p>
+      </div>
+    </div>
+    <p style="margin-top: var(--gap-2); font-size: var(--tiny-size); color: var(--fg-muted); text-align:center;">
+      인증: OAuth (claude login) · 과금: Max 구독 포함 · CliWrap 3.6.7 + CommunityToolkit.Mvvm 8.3.2 · .NET 8.0 WPF
+    </p>
+  </div>
+  <div class="slide-foot">
+    <span>Capability · Claude CLI × .NET WPF</span>
+    <span class="slide-num"><em>23</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 24 — Org capability internalisation
+     ============================================================ -->
+<section class="slide" id="slide-24"
+  data-notes="이번 분석에서 우리가 얻은 역량을 조직에 어떻게 남길지에 대한 정리입니다. KPT 형식으로 Keep Problem Try를 정리해두면 다음 프로젝트에 그대로 옮길 수 있습니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Internalisation</span>
+    <h2>조직 내재화 — 이번에 배운 것을 다음에 다시 쓴다</h2>
+  </div>
+  <div class="center-flex">
+    <div class="cols-3">
+      <div class="card" style="border-color: var(--ok);">
+        <div class="card-eyebrow" style="color: var(--ok);">KEEP — 잘한 것</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim); line-height: 1.7;">
+          ✓ 가설 → 데이터 검증 순서 유지<br>
+          ✓ LP 파일을 1차 분석 대상에 포함<br>
+          ✓ 충돌 11건의 비율(1+10)로 패턴 발견<br>
+          ✓ DB 정의와 코드 구현을 나란히 비교
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--warn);">
+        <div class="card-eyebrow" style="color: var(--warn);">PROBLEM — 놓친 것</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim); line-height: 1.7;">
+          ✗ DB 컬럼 의도("감점")가 코드에 안 보였다<br>
+          ✗ 작은 케이스로만 회귀 테스트 → 대형 블록 미발견<br>
+          ✗ 설계 문서(DB) ↔ 모델(LP) 동기화 점검 부재<br>
+          ✗ obj 비어있음 = 즉시 알람 트리거 없음
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--ana);">
+        <div class="card-eyebrow" style="color: var(--ana);">TRY — 다음에 시도</div>
+        <p style="font-size: var(--small-size); color: var(--fg-dim); line-height: 1.7;">
+          ▸ 사전 검증 SQL 3종 (용량/윈도우/역전)<br>
+          ▸ LP 모델 자동 진단 스크립트 (Claude CLI)<br>
+          ▸ Hard ↔ Soft 토글 UI<br>
+          ▸ 모델 요약 로깅 (변수/제약/obj 항 수)
+        </p>
+      </div>
+    </div>
+    <div class="card" style="margin-top: var(--gap-3); border-color: var(--ok);">
+      <div class="card-eyebrow" style="color: var(--ok);">사전 검증 체크리스트 — Pre-flight 5</div>
+      <p style="font-size: var(--small-size); color: var(--fg-dim);">
+        ① 캘린더 범위 ⊇ ACT PLN_FI 범위 &nbsp; ② 모든 ACT의 PLN_FI ≠ NULL &nbsp;
+        ③ durOffset 범위 내 근무일 ≥ STD_TRM &nbsp; ④ 선후행 PLN_FI 정합성 &nbsp;
+        ⑤ <strong style="color: var(--warn);">MUL_WGT ≤ DAY_CAPA × N</strong> (이번 분석에서 추가)
+      </p>
+    </div>
+  </div>
+  <div class="slide-foot">
+    <span>Internalisation · KPT + Pre-flight 5</span>
+    <span class="slide-num"><em>24</em> / 25</span>
+  </div>
+</section>
+
+<!-- ============================================================
+     SLIDE 25 — Closing
+     ============================================================ -->
+<section class="slide" id="slide-25"
+  data-notes="오늘의 메시지를 한 문장으로 요약하면 — 설계와 구현이 나뉘어 있다는 사실을 인식하는 것이 디버깅의 출발점입니다. SCD002를 Soft로 바꾸면 72개 블록이 즉시 정상 최적화됩니다. 다음 단계는 사전 진단을 코드에 박아 넣어 같은 문제를 두 번 만나지 않는 것입니다. 감사합니다.">
+  <div class="slide-head">
+    <span class="eyebrow">Closing</span>
+    <h2>오늘의 메시지 — 한 줄 요약 + 세 단계</h2>
+  </div>
+  <div class="center-flex">
+    <div class="close-grid">
+      <div class="close-step ok">
+        <div class="step-num">STEP · 01</div>
+        <div class="step-ttl">인식 (Recognise)</div>
+        <div class="step-desc">
+          DB 정의 ≠ 코드 구현. <strong>"감점(Soft)"으로 정의된 SCD002가 LP에선 Hard였다.</strong>
+          이 사일런트 불일치를 발견하는 것이 디버깅의 50%다.
+        </div>
+      </div>
+      <div class="close-step warn">
+        <div class="step-num">STEP · 02</div>
+        <div class="step-ttl">전환 (Restore)</div>
+        <div class="step-desc">
+          OptManager의 SCD002 제약 생성에 <strong>슬랙 변수 + 패널티 항</strong>을 추가.
+          1~2일 작업으로 설계 의도를 코드에 복원한다.
+        </div>
+      </div>
+      <div class="close-step">
+        <div class="step-num">STEP · 03</div>
+        <div class="step-ttl">예방 (Prevent)</div>
+        <div class="step-desc">
+          Pre-flight 5 검증 + LP 자동 진단 + 모델 요약 로깅.
+          <strong>같은 문제를 두 번 만나지 않는</strong> 시스템으로 만든다.
+        </div>
+      </div>
+    </div>
+    <div class="close-cta">
+      ✦ 결론 — <strong>72/83 블록 (≈ 86.7%)이 즉시 정상 최적화</strong>되며,
+      나머지 11개 블록은 패널티가 부과된 상태로라도 해(解)가 항상 존재한다.
+      &nbsp;&nbsp;&nbsp; 다음 단계 : <strong>사전 진단 시스템 + 사용자가 직접 다루는 What-If 분석.</strong>
+    </div>
+    <p style="margin-top: var(--gap-3); font-size: var(--small-size); color: var(--fg-muted); text-align: center;">
+      Q &amp; A · &nbsp; 박상훈 · 2026-04-29 · KSHIFT Optimization Workshop
+    </p>
+  </div>
+  <div class="slide-foot">
+    <span>Closing · Recognise → Restore → Prevent</span>
+    <span class="slide-num"><em>25</em> / 25</span>
+  </div>
+</section>
+
+</main>
+
+<!-- index overlay -->
+<div class="overlay" id="overlay">
+  <h2 style="color: var(--fg); margin-bottom: var(--gap-3); font-size: var(--h2-size);">
+    슬라이드 인덱스 · 클릭하여 이동
+  </h2>
+  <div class="overlay-grid" id="overlay-grid"></div>
+</div>
+
+<!-- speaker notes -->
+<div class="notes" id="notes"></div>
+
+<!-- keyboard hint -->
+<div class="kbd-hint">
+  <span class="kbd">←</span><span class="kbd">→</span> 이동
+  &nbsp;·&nbsp; <span class="kbd">Space</span> 다음
+  &nbsp;·&nbsp; <span class="kbd">Esc</span> 인덱스
+  &nbsp;·&nbsp; <span class="kbd">N</span> 노트
+  &nbsp;·&nbsp; <span class="kbd">T</span> 테마
+  &nbsp;·&nbsp; <span class="kbd">F</span> 전체화면
+  &nbsp;·&nbsp; <span class="kbd">Z</span> 줌 100/150
+</div>
+
+<!-- fullscreen first-gesture prompt -->
+<div class="fs-prompt" id="fs-prompt" role="dialog" aria-label="발표 시작 안내">
+  <div class="fs-card">
+    <div class="fs-title">발표 시작 — 아무 키나 클릭으로 전체화면 진입</div>
+    <div class="fs-sub">
+      이 화면을 클릭하거나 아무 키나 누르면 자동으로 전체화면(Fullscreen)으로 전환됩니다.<br>
+      이후 <span class="kbd">F</span> 로 전체화면 토글, <span class="kbd">Esc</span>/F11 로 종료할 수 있어요.
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total  = slides.length;
+  const progress = document.getElementById('progress');
+  const overlay = document.getElementById('overlay');
+  const overlayGrid = document.getElementById('overlay-grid');
+  const notes = document.getElementById('notes');
+  const btnTheme = document.getElementById('btn-theme');
+  const btnNotes = document.getElementById('btn-notes');
+  const btnIndex = document.getElementById('btn-index');
+
+  // build index overlay
+  slides.forEach((s, i) => {
+    const head = s.querySelector('.slide-head h2, h1');
+    const card = document.createElement('div');
+    card.className = 'overlay-card';
+    card.innerHTML = '<div class="num">' + String(i+1).padStart(2,'0') + ' / ' + total + '</div>' +
+      '<div class="title">' + (head ? head.textContent : 'Slide ' + (i+1)) + '</div>';
+    card.addEventListener('click', () => {
+      goTo(i);
+      overlay.classList.remove('open');
+    });
+    overlayGrid.appendChild(card);
+  });
+
+  let current = 0;
+
+  function update() {
+    const sc = document.documentElement.scrollTop || document.body.scrollTop;
+    const h  = window.innerHeight;
+    const idx = Math.round(sc / h);
+    current = Math.max(0, Math.min(total - 1, idx));
+    progress.style.width = ((current) / (total - 1) * 100) + '%';
+    notes.textContent = slides[current].dataset.notes || '';
+  }
+
+  function goTo(i) {
+    current = Math.max(0, Math.min(total - 1, i));
+    slides[current].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(update, 60);
+  }
+
+  let scrollTimer;
+  window.addEventListener('scroll', () => {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(update, 50);
+  }, { passive: true });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    if (overlay.classList.contains('open')) {
+      if (e.key === 'Escape') { overlay.classList.remove('open'); return; }
+    }
+
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'PageDown':
+      case ' ':
+        e.preventDefault(); goTo(current + 1); break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault(); goTo(current - 1); break;
+      case 'Home':
+        e.preventDefault(); goTo(0); break;
+      case 'End':
+        e.preventDefault(); goTo(total - 1); break;
+      case 'Escape':
+        overlay.classList.toggle('open'); break;
+      case 'n': case 'N':
+        notes.classList.toggle('open');
+        btnNotes.setAttribute('aria-pressed', notes.classList.contains('open'));
+        break;
+      case 't': case 'T':
+        toggleTheme(); break;
+      case 'f': case 'F':
+        e.preventDefault(); toggleFullscreen(); break;
+      case 'z': case 'Z':
+        e.preventDefault(); toggleZoom(); break;
+    }
+  });
+
+  let touchStartY = 0, touchStartX = 0;
+  window.addEventListener('touchstart', (e) => {
+    touchStartY = e.changedTouches[0].screenY;
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    const dy = e.changedTouches[0].screenY - touchStartY;
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    if (Math.abs(dy) > 50 || Math.abs(dx) > 50) {
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) goTo(current + 1); else goTo(current - 1);
+      } else {
+        if (dy < 0) goTo(current + 1); else goTo(current - 1);
+      }
+    }
+  }, { passive: true });
+
+  btnIndex.addEventListener('click', () => overlay.classList.toggle('open'));
+  btnNotes.addEventListener('click', () => {
+    notes.classList.toggle('open');
+    btnNotes.setAttribute('aria-pressed', notes.classList.contains('open'));
+  });
+  btnTheme.addEventListener('click', toggleTheme);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+
+  function toggleTheme() {
+    const r = document.documentElement;
+    r.classList.toggle('light');
+    btnTheme.setAttribute('aria-pressed', r.classList.contains('light'));
+  }
+
+  /* =========================================================
+     Fullscreen — first-gesture prompt + F-key toggle.
+     Browsers block requestFullscreen() outside a user gesture,
+     so we show a prompt and trigger on the first click/keydown. */
+  function enterFullscreen() {
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen
+            || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (fn) { try { fn.call(el); } catch (_) { /* ignore */ } }
+  }
+  function exitFullscreen() {
+    const fn = document.exitFullscreen || document.webkitExitFullscreen
+            || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (fn) { try { fn.call(document); } catch (_) { /* ignore */ } }
+  }
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement
+           || document.mozFullScreenElement || document.msFullscreenElement);
+  }
+  function toggleFullscreen() {
+    if (isFullscreen()) exitFullscreen(); else enterFullscreen();
+  }
+
+  const fsPrompt = document.getElementById('fs-prompt');
+  let fsPromptUsed = false;
+  function dismissFsPrompt(triggerFs) {
+    if (fsPromptUsed || !fsPrompt) return;
+    fsPromptUsed = true;
+    if (triggerFs) enterFullscreen();
+    fsPrompt.classList.add('gone');
+    setTimeout(() => { if (fsPrompt && fsPrompt.parentNode) fsPrompt.parentNode.removeChild(fsPrompt); }, 280);
+  }
+  if (fsPrompt) {
+    // Click anywhere on the prompt → enter fullscreen + dismiss.
+    fsPrompt.addEventListener('click', () => dismissFsPrompt(true));
+    // First key press anywhere on the page → enter fullscreen + dismiss.
+    // Use capture so this runs before the slide keydown handler and beats ESC→index toggle.
+    window.addEventListener('keydown', (e) => {
+      if (fsPromptUsed) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      // ESC during prompt = simply dismiss without entering fullscreen.
+      if (e.key === 'Escape') { dismissFsPrompt(false); return; }
+      dismissFsPrompt(true);
+    }, true);
+    // First click outside the prompt counts too.
+    window.addEventListener('click', () => { if (!fsPromptUsed) dismissFsPrompt(true); }, true);
+  }
+
+  /* =========================================================
+     Zoom toggle (Z) — round-trips between 24px (150%) and 16px (100%). */
+  let zoomedOut = false;
+  function toggleZoom() {
+    zoomedOut = !zoomedOut;
+    document.documentElement.style.fontSize = zoomedOut ? '16px' : '24px';
+  }
+
+  update();
+})();
+</script>
+
+</body>
+</html>
